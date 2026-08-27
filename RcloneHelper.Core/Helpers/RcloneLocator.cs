@@ -19,23 +19,38 @@ public static class RcloneLocator
     /// <returns>rclone 完整路径，如果未找到则返回 null</returns>
     public static string? GetRclonePath()
     {
+        var exeName = GetExecutableName();
+
         // 1. 优先查找 %APPDATA%\RcloneHelper 目录
-        var appDataRclone = Path.Combine(PathUtil.AppDataDir, GetExecutableName());
+        var appDataRclone = Path.Combine(PathUtil.AppDataDir, exeName);
         if (File.Exists(appDataRclone))
             return appDataRclone;
 
-        // 2. 查找程序目录
+        // 2. 查找程序目录（AppDomain.BaseDirectory）
         var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        var localRclone = Path.Combine(appDir, GetExecutableName());
+        var localRclone = Path.Combine(appDir, exeName);
         if (File.Exists(localRclone))
             return localRclone;
 
-        // 3. 从 PATH 环境变量查找
+        // 3. 查找当前进程可执行文件所在目录（覆盖 AOT 单文件场景）
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(processPath))
+        {
+            var processDir = Path.GetDirectoryName(processPath);
+            if (!string.IsNullOrEmpty(processDir))
+            {
+                var processRclone = Path.Combine(processDir, exeName);
+                if (File.Exists(processRclone))
+                    return processRclone;
+            }
+        }
+
+        // 4. 从 PATH 环境变量查找
         var pathRclone = FindInPath();
         if (pathRclone != null)
             return pathRclone;
 
-        // 4. 未找到
+        // 5. 未找到
         return null;
     }
 
