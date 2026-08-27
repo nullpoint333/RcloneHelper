@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Reflection;
 
 /// <summary>
 /// 路径管理工具类
@@ -20,8 +19,11 @@ public static class PathUtil
 
     private static readonly Lazy<string> _appLocation = new(() =>
     {
-        var location = Assembly.GetExecutingAssembly().Location;
-        return string.IsNullOrEmpty(location) ? AppContext.BaseDirectory : Path.GetDirectoryName(location) ?? AppContext.BaseDirectory;
+        // 使用 Environment.ProcessPath 替代 Assembly.Location（AOT/单文件安全）
+        var processPath = Environment.ProcessPath;
+        if (!string.IsNullOrEmpty(processPath))
+            return Path.GetDirectoryName(processPath) ?? AppContext.BaseDirectory;
+        return AppContext.BaseDirectory;
     });
 
     public static string AppDataDir => _appDataDir.Value;
