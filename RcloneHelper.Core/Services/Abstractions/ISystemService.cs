@@ -1,0 +1,85 @@
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using RcloneHelper.Models;
+
+namespace RcloneHelper.Services.Abstractions;
+
+/// <summary>
+/// 系统服务接口，提供跨平台的系统级功能
+/// </summary>
+public interface ISystemService
+{
+    #region 开机自启
+
+    /// <summary>
+    /// 检查是否已设置开机自启
+    /// </summary>
+    bool IsAutoStartEnabled { get; }
+
+    /// <summary>
+    /// 设置开机自启
+    /// </summary>
+    /// <param name="enabled">是否启用</param>
+    /// <returns>操作是否成功</returns>
+    bool SetAutoStart(bool enabled);
+
+    #endregion
+
+    #region 挂载点管理
+
+    /// <summary>
+    /// 获取可用的挂载点
+    /// </summary>
+    /// <returns>Windows: 盘符如 "Z:"; Linux/macOS: 目录路径如 "/mnt/rclone"</returns>
+    string GetAvailableMountPoint();
+
+    /// <summary>
+    /// 获取系统已使用的挂载点列表
+    /// </summary>
+    /// <returns>已使用的挂载点列表</returns>
+    IReadOnlySet<string> GetUsedMountPoints();
+
+    /// <summary>
+    /// 获取系统当前的 rclone 挂载名称和挂载点映射（不含进程ID）
+    /// </summary>
+    /// <returns>挂载名称到挂载点的映射（如: "alist" -> "Z:"）</returns>
+    IReadOnlyDictionary<string, string> GetActiveMountNames();
+
+    /// <summary>
+    /// 获取系统中所有 rclone 进程及其 PID 和完整命令行
+    /// </summary>
+    /// <returns>PID 到命令行的映射</returns>
+    Dictionary<int, string> GetRcloneProcessList();
+
+    /// <summary>
+    /// 扫描系统中所有 rclone mount 进程，返回挂载名称到进程信息的映射
+    /// </summary>
+    /// <returns>挂载名称 -> 进程信息</returns>
+    IReadOnlyDictionary<string, RcloneMountInfo> ScanRcloneMounts();
+
+    #endregion
+
+    #region 系统信息
+
+    /// <summary>
+    /// 获取当前平台类型
+    /// </summary>
+    OSPlatform Platform { get; }
+
+    /// <summary>
+    /// 获取应用程序可执行文件路径
+    /// </summary>
+    string AppExecutablePath { get; }
+
+    /// <summary>
+    /// 获取 FUSE 依赖状态（用于 rclone mount）
+    /// </summary>
+    SystemDependency? GetFuseDependency();
+
+    /// <summary>
+    /// 获取 rclone 依赖状态
+    /// </summary>
+    SystemDependency? GetRcloneDependency();
+
+    #endregion
+}

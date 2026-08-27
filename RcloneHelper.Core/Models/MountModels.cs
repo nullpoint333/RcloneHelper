@@ -1,0 +1,403 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using RcloneHelper.Helpers;
+using System;
+using System.Threading;
+
+namespace RcloneHelper.Models;
+
+/// <summary>
+/// 挂载进程信息（用于重启后恢复进程追踪）
+/// </summary>
+public class RcloneMountInfo
+{
+    public int Pid { get; set; }
+    public string MountName { get; set; } = "";
+    public string DriveLetter { get; set; } = "";
+    public string CommandLine { get; set; } = "";
+}
+
+public class MountConfig
+{
+    private const int MinPort = 1;
+    private const int MaxPort = 65535;
+
+    public string Name { get; set; } = "";
+    public string RemotePath { get; set; } = "";
+    public string LocalDrive { get; set; } = "Z:";
+    public string Type { get; set; } = "webdav";
+    public string Url { get; set; } = "";
+    public string User { get; set; } = "";
+    public string Password { get; set; } = "";
+    public string Vendor { get; set; } = "other";
+    public bool AutoMountOnStart { get; set; } = true;
+    public bool UseNetworkMode { get; set; } = false;
+
+    // URL 组件字段
+    public bool UseHttps { get; set; } = true;
+    public string Host { get; set; } = "";
+
+    private int _port = 443;
+    public int Port
+    {
+        get => _port;
+        set => _port = value >= MinPort && value <= MaxPort ? value : 443;
+    }
+
+    public string Path { get; set; } = "";
+
+    // S3 专用字段
+    public string AccessKeyId { get; set; } = "";
+    public string SecretAccessKey { get; set; } = "";
+    public string Region { get; set; } = "";
+    public string Endpoint { get; set; } = "";
+    public string S3Provider { get; set; } = "AWS";
+
+    // 高级 rclone 参数
+    /// <summary>
+    /// VFS 缓存模式 (off, minimal, writes, full)
+    /// </summary>
+    public string VfsCacheMode { get; set; } = "writes";
+
+    /// <summary>
+    /// 自定义 rclone 额外参数
+    /// </summary>
+    public string ExtraArgs { get; set; } = "";
+}
+
+public partial class MountInfo : ObservableObject
+{
+    [ObservableProperty]
+    private string _name = "";
+
+    [ObservableProperty]
+    private string _remotePath = "";
+
+    [ObservableProperty]
+    private string _localDrive = "Z:";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWebDavType))]
+    [NotifyPropertyChangedFor(nameof(IsFtpType))]
+    [NotifyPropertyChangedFor(nameof(IsSftpType))]
+    [NotifyPropertyChangedFor(nameof(IsS3Type))]
+    [NotifyPropertyChangedFor(nameof(UseUrlInput))]
+    private string _type = "webdav";
+
+    /// <summary>
+    /// 类型变更时自动更新默认端口
+    /// </summary>
+    partial void OnTypeChanged(string value)
+    {
+        // 根据类型设置默认端口
+        Port = value switch
+        {
+            "webdav" => UseHttps ? 443 : 80,
+            "ftp" => 21,
+            "sftp" => 22,
+            "smb" => 445,
+            _ => 443
+        };
+    }
+
+    [ObservableProperty]
+    private string _url = "";
+
+    [ObservableProperty]
+    private string _user = "";
+
+    [ObservableProperty]
+    private string _password = "";
+
+    [ObservableProperty]
+    private string _vendor = "other";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanMount))]
+    [NotifyPropertyChangedFor(nameof(CanUnmount))]
+    private bool _isMounted;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanMount))]
+    [NotifyPropertyChangedFor(nameof(CanUnmount))]
+    private bool _isMounting;
+
+    [ObservableProperty]
+    private string _status = "未挂载";
+
+    /// <summary>
+    /// 用于取消挂载操作的 CancellationTokenSource
+    /// </summary>
+    public CancellationTokenSource? MountCancellationTokenSource { get; set; }
+
+    /// <summary>
+    /// 计算属性：是否可以挂载（未挂载且未在挂载中）
+    /// </summary>
+    public bool CanMount => !IsMounted && !IsMounting;
+
+    /// <summary>
+    /// 计算属性：是否可以卸载（已挂载且未在挂载中）
+    /// </summary>
+    public bool CanUnmount => IsMounted && !IsMounting;
+
+    [ObservableProperty]
+    private bool _autoMountOnStart = true;
+
+    [ObservableProperty]
+    private bool _useNetworkMode = false;
+
+    // URL 组件字段
+    [ObservableProperty]
+    private bool _useHttps = true;
+
+    /// <summary>
+    /// 协议类型（用于 UI 绑定）
+    /// </summary>
+    public string Protocol
+    {
+        get => UseHttps ? "HTTPS" : "HTTP";
+        set
+        {
+            if (value == "HTTPS" && !UseHttps)
+            {
+                UseHttps = true;
+                // WebDAV 切换到 HTTPS 时更新端口
+                if (Type == "webdav" && Port == 80)
+                {
+                    Port = 443;
+                }
+                OnPropertyChanged(nameof(Protocol));
+                OnPropertyChanged(nameof(ComputedUrl));
+            }
+            else if (value == "HTTP" && UseHttps)
+            {
+                UseHttps = false;
+                // WebDAV 切换到 HTTP 时更新端口
+                if (Type == "webdav" && Port == 443)
+                {
+                    Port = 80;
+                }
+                OnPropertyChanged(nameof(Protocol));
+                OnPropertyChanged(nameof(ComputedUrl));
+            }
+        }
+    }
+
+    [ObservableProperty]
+    private string _host = "";
+
+    [ObservableProperty]
+    private int _port = 443;
+
+    private const int MinPort = 1;
+    private const int MaxPort = 65535;
+
+    /// <summary>
+    /// 端口值变更时验证并纠正
+    /// </summary>
+    partial void OnPortChanged(int value)
+    {
+        // 如果端口无效，重置为默认值
+        if (value < MinPort || value > MaxPort)
+        {
+            Port = DefaultPort;
+        }
+    }
+
+    [ObservableProperty]
+    private string _path = "";
+
+    // S3 专用字段
+    [ObservableProperty]
+    private string _accessKeyId = "";
+
+    [ObservableProperty]
+    private string _secretAccessKey = "";
+
+    [ObservableProperty]
+    private string _region = "";
+
+    [ObservableProperty]
+    private string _endpoint = "";
+
+    [ObservableProperty]
+    private string _s3Provider = "AWS";
+
+    // 高级 rclone 参数
+    [ObservableProperty]
+    private string _vfsCacheMode = "writes";
+
+    [ObservableProperty]
+    private string _extraArgs = "";
+
+    /// <summary>
+    /// 计算属性：是否为 WebDAV 类型
+    /// </summary>
+    public bool IsWebDavType => Type == "webdav";
+
+    /// <summary>
+    /// 计算属性：是否为 FTP 类型
+    /// </summary>
+    public bool IsFtpType => Type == "ftp";
+
+    /// <summary>
+    /// 计算属性：是否为 SFTP 类型
+    /// </summary>
+    public bool IsSftpType => Type == "sftp";
+
+    /// <summary>
+    /// 计算属性：是否为 S3 类型
+    /// </summary>
+    public bool IsS3Type => Type == "s3";
+
+    /// <summary>
+    /// 计算属性：是否为网络存储类型（WebDAV/FTP/SFTP）
+    /// </summary>
+    public bool IsNetworkStorageType => IsWebDavType || IsFtpType || IsSftpType;
+
+    /// <summary>
+    /// 计算属性：是否使用 URL 输入（非 WebDAV/FTP/SFTP 类型）
+    /// </summary>
+    public bool UseUrlInput => !IsNetworkStorageType;
+
+    /// <summary>
+    /// 获取默认端口
+    /// </summary>
+    public int DefaultPort => Type switch
+    {
+        "webdav" => UseHttps ? 443 : 80,
+        "ftp" => 21,
+        "sftp" => 22,
+        "smb" => 445,
+        _ => 443
+    };
+
+    /// <summary>
+    /// 计算完整 URL
+    /// </summary>
+    public string ComputedUrl
+    {
+        get
+        {
+            if (IsWebDavType && !string.IsNullOrWhiteSpace(Host))
+            {
+                var protocol = UseHttps ? "https" : "http";
+                var portPart = (UseHttps && Port == 443) || (!UseHttps && Port == 80) ? "" : $":{Port}";
+                var pathPart = string.IsNullOrWhiteSpace(Path) ? "" : (Path.StartsWith("/") ? Path : $"/{Path}");
+                return $"{protocol}://{Host}{portPart}{pathPart}";
+            }
+
+            if ((IsFtpType || IsSftpType) && !string.IsNullOrWhiteSpace(Host))
+            {
+                var protocol = IsFtpType ? "ftp" : "sftp";
+                var portPart = Port == DefaultPort ? "" : $":{Port}";
+                var pathPart = string.IsNullOrWhiteSpace(Path) ? "" : (Path.StartsWith("/") ? Path : $"/{Path}");
+                return $"{protocol}://{Host}{portPart}{pathPart}";
+            }
+
+            return Url;
+        }
+    }
+
+    /// <summary>
+    /// 从配置创建 MountInfo
+    /// </summary>
+    /// <param name="config">配置对象</param>
+    /// <param name="preserveEncrypted">
+    /// 为 true 时跳过解密，直接保留原始值（用于导入备份，避免跨用户/跨平台解密失败导致密码丢失）。
+    /// 保留的加密值会在挂载时由 FromConfig 正常解密。
+    /// </param>
+    public static MountInfo FromConfig(MountConfig config, bool preserveEncrypted = false)
+    {
+        return new MountInfo
+        {
+            Name = config.Name,
+            RemotePath = config.RemotePath,
+            LocalDrive = config.LocalDrive,
+            Type = config.Type,
+            Url = config.Url,
+            User = config.User,
+            // 解密密码（兼容未加密的旧数据）
+            // preserveEncrypted=true 时直接保留原值，避免跨用户/跨平台解密失败导致密码丢失
+            Password = preserveEncrypted ? config.Password : SecureStorageHelper.Decrypt(config.Password),
+            Vendor = config.Vendor,
+            AutoMountOnStart = config.AutoMountOnStart,
+            UseNetworkMode = config.UseNetworkMode,
+            UseHttps = config.UseHttps,
+            Host = config.Host,
+            Port = config.Port,
+            Path = config.Path,
+            // S3 字段
+            AccessKeyId = config.AccessKeyId,
+            SecretAccessKey = preserveEncrypted ? config.SecretAccessKey : SecureStorageHelper.Decrypt(config.SecretAccessKey),
+            Region = config.Region,
+            Endpoint = config.Endpoint,
+            S3Provider = config.S3Provider,
+            // 高级参数
+            VfsCacheMode = config.VfsCacheMode,
+            ExtraArgs = config.ExtraArgs,
+            IsMounted = false,
+            Status = "未挂载"
+        };
+    }
+
+    /// <summary>
+    /// 从另一个 MountInfo 复制配置字段（用于编辑/保存操作）
+    /// </summary>
+    public void CopyFieldsFrom(MountInfo source)
+    {
+        Name = source.Name;
+        RemotePath = source.RemotePath;
+        LocalDrive = source.LocalDrive;
+        Type = source.Type;
+        Url = source.Url;
+        User = source.User;
+        Password = source.Password;
+        Vendor = source.Vendor;
+        AutoMountOnStart = source.AutoMountOnStart;
+        UseNetworkMode = source.UseNetworkMode;
+        UseHttps = source.UseHttps;
+        Host = source.Host;
+        Port = source.Port;
+        Path = source.Path;
+        // S3 字段
+        AccessKeyId = source.AccessKeyId;
+        SecretAccessKey = source.SecretAccessKey;
+        Region = source.Region;
+        Endpoint = source.Endpoint;
+        S3Provider = source.S3Provider;
+        // 高级参数
+        VfsCacheMode = source.VfsCacheMode;
+        ExtraArgs = source.ExtraArgs;
+    }
+
+    public MountConfig ToConfig()
+    {
+        return new MountConfig
+        {
+            Name = Name,
+            RemotePath = RemotePath,
+            LocalDrive = LocalDrive,
+            Type = Type,
+            Url = IsWebDavType || IsFtpType || IsSftpType ? ComputedUrl : Url,
+            User = User,
+            // 加密密码
+            Password = SecureStorageHelper.Encrypt(Password),
+            Vendor = Vendor,
+            AutoMountOnStart = AutoMountOnStart,
+            UseNetworkMode = UseNetworkMode,
+            UseHttps = UseHttps,
+            Host = Host,
+            Port = Port,
+            Path = Path,
+            // S3 字段
+            AccessKeyId = AccessKeyId,
+            SecretAccessKey = SecureStorageHelper.Encrypt(SecretAccessKey),
+            Region = Region,
+            Endpoint = Endpoint,
+            S3Provider = S3Provider,
+            // 高级参数
+            VfsCacheMode = VfsCacheMode,
+            ExtraArgs = ExtraArgs
+        };
+    }
+}
