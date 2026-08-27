@@ -43,13 +43,37 @@ dotnet run --no-build -c Release
 
 > ⚠️ **注意**：开发时请使用 Release 配置。Debug 编译输出会被正在运行的 Debug 实例锁定，导致编译失败。
 
-### 3. 发布独立应用
+### 3. 本地打包
 
 ```bash
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+# Windows (PowerShell)
+.\build.ps1
+
+# 指定运行时
+.\build.ps1 -Runtime linux-x64
+
+# 指定版本号
+.\build.ps1 -Version v1.0.0
 ```
 
-### 4. 运行测试
+或手动发布：
+
+```bash
+dotnet publish RcloneHelper/RcloneHelper.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+```
+
+### 4. 发布新版本
+
+推送 `v*` 格式的 tag 即可触发 GitHub Actions 自动构建并创建 Release：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+构建产物会自动上传到 [Releases](https://github.com/nullpoint333/RcloneHelper/releases) 页面。
+
+### 5. 运行测试
 
 ```bash
 dotnet test
