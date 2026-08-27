@@ -357,6 +357,9 @@ public class MountService
                             void HandleExit()
                             {
                                 _mountProcesses.TryRemove(name, out _);
+
+                                // 只有 IsMounted=true（曾经挂载成功过）才视为"意外断开"并通知用户。
+                                // 启动阶段的退出由轮询循环统一报错，Exited 回调不重复处理。
                                 if (mount.IsMounted)
                                 {
                                     mount.IsMounted = false;
@@ -375,6 +378,67 @@ public class MountService
 
             mountProcess.Start();
             _mountProcesses[name] = mountProcess;
+
+            // 异步读取 stderr 到共享缓冲区。
+            // 关键：rclone 在挂载失败时（例如 WinFsp 残留导致 80070050），
+            //   会先把 "ERROR : ... Mount failed" 写到 stderr，然后**进程仍然存活**约 30 秒
+            //   （rclone 在等待自己的 mount observer 超时）才退出。
+            //   所以"轮询 HasExited"这条路会卡满 30 秒，必须主动监控 stderr 内容才能秒级响应。
+            var stderrBuffer = new System.Text.StringBuilder();
+            var stderrBufferLock = new object();
+            var stderrReadTask = Task.Run(async () =>
+            {
+                try
+                {
+                    var reader = mountProcess.StandardError;
+                    var chunk = new char[512];
+                    while (!mountProcess.HasExited)
+                    {
+                        int read;
+                        try
+                        {
+                            read = await reader.ReadAsync(chunk, 0, chunk.Length);
+                        }
+                        catch
+                        {
+                            break;
+                        }
+                        if (read <= 0) break;
+                        lock (stderrBufferLock)
+                        {
+                            stderrBuffer.Append(chunk, 0, read);
+                        }
+                    }
+                    // 进程退出后再读一次残留
+                    try
+                    {
+                        var tail = await reader.ReadToEndAsync();
+                        if (!string.IsNullOrEmpty(tail))
+                        {
+                            lock (stderrBufferLock)
+                            {
+                                stderrBuffer.Append(tail);
+                            }
+                        }
+                    }
+                    catch { /* 忽略 */ }
+                }
+                catch
+                {
+                    // stderr 读取失败不影响主流程
+                }
+            });
+
+            // rclone 挂载失败的特征关键字（任一出现即视为启动失败）
+            var fatalMarkers = new[]
+            {
+                "Mount failed",
+                "Cannot create WinFsp-FUSE",
+                "Fatal error",
+                "failed to mount FUSE fs",
+                "couldn't list files",
+                "Statfs failed"
+            };
 
             // 等待挂载完成：轮询检查挂载点是否可访问
             var startTime = DateTime.UtcNow;
@@ -399,15 +463,70 @@ public class MountService
                     throw new OperationCanceledException("挂载操作已取消", cancellationToken);
                 }
 
+                // 1) 进程已退出：读 stderr 并抛异常
                 if (mountProcess.HasExited)
                 {
-                    var error = await mountProcess.StandardError.ReadToEndAsync();
+                    // 等待 stderr 读取协程把残留读完
+                    try { await stderrReadTask.WaitAsync(TimeSpan.FromSeconds(2)); } catch { /* ignore */ }
+
+                    string stderrSnapshot;
+                    lock (stderrBufferLock)
+                    {
+                        stderrSnapshot = stderrBuffer.ToString();
+                    }
+
                     mount.IsMounting = false;
                     mount.Status = "挂载失败";
-                    _logger.Error($"挂载失败: {name}, 进程已退出, 错误: {error}");
-                    throw new InvalidOperationException($"挂载失败: {error}");
+                    _logger.Error($"挂载失败: {name}, 进程已退出, 错误: {stderrSnapshot}");
+                    throw new InvalidOperationException($"挂载失败: {stderrSnapshot}");
                 }
 
+                // 2) 进程还活着，但 stderr 已经写出失败关键字 → 立即终止并抛异常
+                //    这是修复"卡 30 秒"的关键路径：不再等 rclone 自己的 observer 超时
+                string currentStderr;
+                lock (stderrBufferLock)
+                {
+                    currentStderr = stderrBuffer.ToString();
+                }
+                if (!string.IsNullOrEmpty(currentStderr))
+                {
+                    var matchedMarker = fatalMarkers.FirstOrDefault(marker =>
+                        currentStderr.Contains(marker, StringComparison.OrdinalIgnoreCase));
+                    if (matchedMarker != null)
+                    {
+                        _logger.Warning($"检测到挂载失败关键字 [{matchedMarker}]，立即终止 rclone 进程");
+
+                        // 杀掉 rclone 进程
+                        try
+                        {
+                            if (!mountProcess.HasExited)
+                            {
+                                mountProcess.Kill();
+                                mountProcess.WaitForExit(3000);
+                            }
+                        }
+                        catch (Exception killEx)
+                        {
+                            _logger.Warning($"终止 rclone 进程时出错: {killEx.Message}");
+                        }
+
+                        // 等待 stderr 协程完成（让它把剩余内容读完）
+                        try { await stderrReadTask.WaitAsync(TimeSpan.FromSeconds(2)); } catch { /* ignore */ }
+
+                        string finalStderr;
+                        lock (stderrBufferLock)
+                        {
+                            finalStderr = stderrBuffer.ToString();
+                        }
+
+                        mount.IsMounting = false;
+                        mount.Status = "挂载失败";
+                        _logger.Error($"挂载失败: {name}, 错误: {finalStderr}");
+                        throw new InvalidOperationException($"挂载失败: {finalStderr}");
+                    }
+                }
+
+                // 3) 检查挂载点是否真的可用
                 if (IsMountPointAccessible(mount.LocalDrive))
                 {
                     // 进一步验证挂载点是否真正可用（能读取内容）
@@ -473,6 +592,14 @@ public class MountService
     /// <summary>
     /// 构建 rclone mount 命令参数
     /// </summary>
+    /// <remarks>
+    /// 关于 --network-mode：rclone 在网络模式下会以 \\rclone\&lt;volname&gt; 注册一个 WinFsp 网络共享。
+    /// 当同一会话内有多个并发挂载、或上次挂载未正常卸载时，新挂载会撞到残留共享名，
+    /// 报 "Cannot create WinFsp-FUSE file system. The service rclone has failed to start (Status=80070050)"。
+    /// 解决办法：
+    ///   1. 默认走普通盘符模式（不注册网络共享名），从根本上避免冲突。
+    ///   2. 即使在网络模式下，也使用进程 PID 拼到 volname 后缀，确保每个 rclone 进程的共享名唯一。
+    /// </remarks>
     private static string BuildMountArgs(MountInfo mount)
     {
         // remote path: name: 或 name:/path (rclone remote 名称需要转义特殊字符)
@@ -483,15 +610,20 @@ public class MountService
             : $"{escapedName}:{mount.RemotePath}";
 
         // 基础参数
+        // --vfs-cache-mode writes: 写入立即刷新到远端
+        // --no-modtime: 避免每次都改文件时间戳导致 WebDAV 服务器压力
         var args = $"mount {remotePath} {mount.LocalDrive} --vfs-cache-mode writes --links";
 
         // 网络模式
         if (mount.UseNetworkMode)
         {
-            args += $" --network-mode --volname \\\\rclone\\{mount.Name}";
+            // 用 PID + 短随机后缀保证 volname 在同一会话内唯一，避免残留共享名冲突
+            var uniqueSuffix = Guid.NewGuid().ToString("N").Substring(0, 8);
+            args += $" --network-mode --volname \\\\rclone\\{mount.Name}_{uniqueSuffix}";
         }
         else
         {
+            // 普通盘符模式：使用挂载名作为卷标，不走网络共享，从根本上规避 80070050 残留问题
             args += $" --volname \"{mount.Name}\"";
         }
 
