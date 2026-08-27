@@ -16,8 +16,8 @@ public static class RcloneLocator
     /// <summary>
     /// 获取 rclone 可执行文件路径
     /// </summary>
-    /// <returns>rclone 路径，如果未找到则返回 "rclone" 作为回退</returns>
-    public static string GetRclonePath()
+    /// <returns>rclone 完整路径，如果未找到则返回 null</returns>
+    public static string? GetRclonePath()
     {
         // 1. 优先查找 %APPDATA%\RcloneHelper 目录
         var appDataRclone = Path.Combine(PathUtil.AppDataDir, GetExecutableName());
@@ -35,46 +35,33 @@ public static class RcloneLocator
         if (pathRclone != null)
             return pathRclone;
 
-        // 4. 回退到使用 "rclone"，依赖系统 PATH
-        return GetExecutableName();
+        // 4. 未找到
+        return null;
     }
 
     /// <summary>
     /// 在系统 PATH 中查找 rclone
     /// </summary>
-    /// <returns>rclone 路径，如果未找到则返回 null</returns>
+    /// <returns>rclone 完整路径，如果未找到则返回 null</returns>
     public static string? FindInPath()
     {
-        try
+        var exeName = GetExecutableName();
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(pathEnv))
+            return null;
+
+        foreach (var dir in pathEnv.Split(Path.PathSeparator))
         {
-            var command = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "where" : "which";
-            using var process = new Process
+            try
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = command,
-                    Arguments = "rclone",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
-
-            process.Start();
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(5000);
-
-            if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
-            {
-                var path = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)[0];
-                if (File.Exists(path))
-                    return path;
+                var fullPath = Path.Combine(dir.Trim(), exeName);
+                if (File.Exists(fullPath))
+                    return fullPath;
             }
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"RcloneLocator: 查找 rclone 失败 - {ex.Message}");
+            catch
+            {
+                // 跳过无效路径
+            }
         }
 
         return null;
@@ -83,10 +70,13 @@ public static class RcloneLocator
     /// <summary>
     /// 测试 rclone 是否可用
     /// </summary>
-    /// <param name="rclonePath">rclone 路径</param>
+    /// <param name="rclonePath">rclone 路径（完整路径或可执行文件名）</param>
     /// <returns>是否可用</returns>
-    public static bool TestExecution(string rclonePath)
+    public static bool TestExecution(string? rclonePath)
     {
+        if (string.IsNullOrEmpty(rclonePath))
+            return false;
+
         try
         {
             using var process = new Process
@@ -103,12 +93,12 @@ public static class RcloneLocator
             };
 
             process.Start();
+            var output = process.StandardOutput.ReadToEnd();
             process.WaitForExit(5000);
-            return process.ExitCode == 0;
+            return process.ExitCode == 0 && output.Contains("rclone", StringComparison.OrdinalIgnoreCase);
         }
-        catch (Exception ex)
+        catch
         {
-            Debug.WriteLine($"RcloneLocator: 测试 rclone 失败 ({rclonePath}) - {ex.Message}");
             return false;
         }
     }

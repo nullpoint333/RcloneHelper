@@ -128,6 +128,15 @@ public class MountService
     #region 挂载管理
 
     /// <summary>
+    /// 获取 rclone 可执行文件路径，未找到时抛出异常
+    /// </summary>
+    private static string GetRclonePathOrThrow()
+    {
+        return GetRclonePathOrThrow()
+            ?? throw new InvalidOperationException("未找到 rclone，请确认已安装并在 PATH 中，或放置在程序目录下");
+    }
+
+    /// <summary>
     /// 添加新的挂载配置
     /// </summary>
     /// <param name="mount">挂载信息</param>
@@ -201,7 +210,7 @@ public class MountService
                 {
                     StartInfo = new ProcessStartInfo
                     {
-                        FileName = RcloneLocator.GetRclonePath(),
+                        FileName = GetRclonePathOrThrow(),
                         Arguments = $"config delete {EscapeRcloneName(name)}",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -377,7 +386,7 @@ public class MountService
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = RcloneLocator.GetRclonePath(),
+                    FileName = GetRclonePathOrThrow(),
                     Arguments = mountArgs,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -778,7 +787,7 @@ public class MountService
                 {
                     StartInfo = new ProcessStartInfo
                     {
-                        FileName = RcloneLocator.GetRclonePath(),
+                        FileName = GetRclonePathOrThrow(),
                         Arguments = $"umount {mount.LocalDrive}",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
@@ -1086,7 +1095,7 @@ public class MountService
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = RcloneLocator.GetRclonePath(),
+                    FileName = GetRclonePathOrThrow(),
                     Arguments = $"umount {mount.LocalDrive}",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -1197,7 +1206,7 @@ public class MountService
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = RcloneLocator.GetRclonePath(),
+                    FileName = GetRclonePathOrThrow(),
                     Arguments = configArgs,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -1250,7 +1259,7 @@ public class MountService
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = RcloneLocator.GetRclonePath(),
+                    FileName = GetRclonePathOrThrow(),
                     Arguments = $"config delete {escapedName}",
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
