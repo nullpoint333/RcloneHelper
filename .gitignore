@@ -109,3 +109,7 @@ output/publish-aot/
 .reasonix/
 output/rclone-v1.75.1-windows-amd64.zip
 output/winfsp-2.1.25156.msi
+
+# build.ps1 / CI 本地产物
+/publish/
+/RcloneHelper-*.zip

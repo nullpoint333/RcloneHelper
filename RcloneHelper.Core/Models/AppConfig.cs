@@ -12,6 +12,11 @@ public class AppConfig
     private static readonly string[] ValidProtocols = { "http", "https", "socks5" };
 
     /// <summary>
+    /// 配置文件版本号（用于未来格式迁移）
+    /// </summary>
+    public int ConfigVersion { get; set; } = 1;
+
+    /// <summary>
     /// 启动时自动挂载所有存储
     /// </summary>
     public bool AutoMountOnStart { get; set; } = false;
@@ -63,6 +68,16 @@ public class AppConfig
     }
 
     /// <summary>
+    /// 代理用户名（可选）
+    /// </summary>
+    public string ProxyUser { get; set; } = "";
+
+    /// <summary>
+    /// 代理密码（可选）
+    /// </summary>
+    public string ProxyPassword { get; set; } = "";
+
+    /// <summary>
     /// rclone 缓存目录（VFS 缓存）。
     /// 为空表示使用默认位置（%APPDATA%\rclone\cache）。
     /// 修改后需要重新挂载才能生效。
@@ -83,6 +98,16 @@ public class AppConfig
         if (ProxyPort < MinPort || ProxyPort > MaxPort)
             return "";
 
-        return $"{ProxyProtocol}://{ProxyHost.Trim()}:{ProxyPort}";
+        // 支持代理认证：user[:password]@host:port
+        var auth = "";
+        if (!string.IsNullOrWhiteSpace(ProxyUser))
+        {
+            auth = Uri.EscapeDataString(ProxyUser);
+            if (!string.IsNullOrWhiteSpace(ProxyPassword))
+                auth += ":" + Uri.EscapeDataString(ProxyPassword);
+            auth += "@";
+        }
+
+        return $"{ProxyProtocol}://{auth}{ProxyHost.Trim()}:{ProxyPort}";
     }
 }

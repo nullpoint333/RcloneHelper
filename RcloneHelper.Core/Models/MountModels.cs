@@ -280,6 +280,33 @@ public partial class MountInfo : ObservableObject
         }
     }
 
+    /// <summary>
+    /// 从另一个 MountInfo 复制配置字段（用于编辑/保存操作）
+    /// </summary>
+    public void CopyFieldsFrom(MountInfo source)
+    {
+        Name = source.Name;
+        RemotePath = source.RemotePath;
+        LocalDrive = source.LocalDrive;
+        Type = source.Type;
+        Url = source.Url;
+        User = source.User;
+        Password = source.Password;
+        Vendor = source.Vendor;
+        AutoMountOnStart = source.AutoMountOnStart;
+        UseNetworkMode = source.UseNetworkMode;
+        UseHttps = source.UseHttps;
+        Host = source.Host;
+        Port = source.Port;
+        Path = source.Path;
+        // S3 字段
+        AccessKeyId = source.AccessKeyId;
+        SecretAccessKey = source.SecretAccessKey;
+        Region = source.Region;
+        Endpoint = source.Endpoint;
+        S3Provider = source.S3Provider;
+    }
+
     public static MountInfo FromConfig(MountConfig config)
     {
         return new MountInfo
