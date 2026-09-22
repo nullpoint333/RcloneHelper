@@ -104,7 +104,8 @@ $RECYCLE.BIN/
 appsettings.Development.json
 secrets.json
 output/publish/
+output/publish-aot/
 .claude/*.json
 .reasonix/
-output/rclone-v1.73.3-windows-amd64.zip
+output/rclone-v1.75.1-windows-amd64.zip
 output/winfsp-2.1.25156.msi

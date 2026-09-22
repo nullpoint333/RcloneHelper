@@ -20,8 +20,9 @@ public static class PathUtil
 
     private static readonly Lazy<string> _appLocation = new(() =>
     {
-        var location = Assembly.GetExecutingAssembly().Location;
-        return string.IsNullOrEmpty(location) ? AppContext.BaseDirectory : Path.GetDirectoryName(location) ?? AppContext.BaseDirectory;
+        // 直接使用 BaseDirectory：单文件/AOT 下 Assembly.Location 返回空，
+        // 且对主程序而言两者指向同一目录（旧逻辑为空时本就回退到这里）
+        return AppContext.BaseDirectory;
     });
 
     public static string AppDataDir => _appDataDir.Value;
@@ -31,6 +32,24 @@ public static class PathUtil
     public static string LogPath => Path.Combine(AppDataDir, "log");
     public static string RcloneConfigPath => Path.Combine(_rcloneConfigDir.Value, "rclone.conf");
     public static string RcloneCacheDir => Path.Combine(_rcloneConfigDir.Value, "cache");
+
+    /// <summary>
+    /// 默认 rclone 缓存目录（与 <see cref="RcloneCacheDir"/> 相同，保留别名语义）
+    /// </summary>
+    public static string DefaultRcloneCacheDir => RcloneCacheDir;
+
+    /// <summary>
+    /// 解析实际生效的 rclone 缓存目录。
+    /// 自定义目录为空时回退到默认位置。
+    /// </summary>
+    /// <param name="customDir">用户自定义的缓存目录（可为空）</param>
+    /// <returns>实际生效的缓存目录（已去除首尾空格）</returns>
+    public static string GetEffectiveCacheDir(string? customDir)
+    {
+        if (!string.IsNullOrWhiteSpace(customDir))
+            return customDir.Trim();
+        return RcloneCacheDir;
+    }
 
     /// <summary>
     /// 原子写入文件内容

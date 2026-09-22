@@ -13,11 +13,42 @@ public static class RcloneLocator
     private const string WindowsExe = "rclone.exe";
     private const string UnixBinary = "rclone";
 
+    private static readonly object CacheLock = new();
+    private static string? _cachedPath;
+
     /// <summary>
-    /// 获取 rclone 可执行文件路径
+    /// 获取 rclone 可执行文件路径（结果会缓存，避免每次调用都启动 where/which 进程）
     /// </summary>
     /// <returns>rclone 路径，如果未找到则返回 "rclone" 作为回退</returns>
     public static string GetRclonePath()
+    {
+        lock (CacheLock)
+        {
+            // 命中缓存且文件仍在（防止用户卸载/移动后一直用旧路径）
+            if (_cachedPath != null && File.Exists(_cachedPath))
+                return _cachedPath;
+
+            var resolved = ResolveRclonePath();
+
+            // 仅缓存真实存在的完整路径；回退值 "rclone" 不缓存，
+            // 以便用户之后安装 rclone 时能被重新发现
+            _cachedPath = File.Exists(resolved) ? resolved : null;
+            return resolved;
+        }
+    }
+
+    /// <summary>
+    /// 清除路径缓存（例如用户手动安装/切换 rclone 后）
+    /// </summary>
+    public static void InvalidateCache()
+    {
+        lock (CacheLock)
+        {
+            _cachedPath = null;
+        }
+    }
+
+    private static string ResolveRclonePath()
     {
         // 1. 优先查找 %APPDATA%\RcloneHelper 目录
         var appDataRclone = Path.Combine(PathUtil.AppDataDir, GetExecutableName());

@@ -8,7 +8,8 @@
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
-    <publishAOT>true</publishAOT>
+    <!-- AOT 仅由 output/build-aot.bat 通过 -p:PublishAot=true 按需开启，
+         不在此写死，否则框架依赖发布（build-lite/build-full）会报 NETSDK1102 -->
     
     <!-- AOT/Trimming 配置 -->
     <EnableAotAnalyzer>true</EnableAotAnalyzer>

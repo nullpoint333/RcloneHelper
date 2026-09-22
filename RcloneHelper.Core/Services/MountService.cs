@@ -4,7 +4,11 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -325,6 +329,17 @@ public class MountService
         {
             _logger.Info($"开始挂载: {name} ({mount.Type}) -> {mount.LocalDrive}");
 
+            // 挂载前连通性预检：跑通才继续，跑不通直接终止并提示，不再启动 rclone 进程
+            var (preflightOk, preflightMessage) = await TestConnectionAsync(mount, cancellationToken);
+            if (!preflightOk)
+            {
+                mount.IsMounting = false;
+                mount.Status = "挂载失败";
+                mount.MountCancellationTokenSource = null;
+                _logger.Error($"挂载前连通性测试失败: {name}, {preflightMessage}");
+                throw new InvalidOperationException($"连通性测试失败，无法挂载：{preflightMessage}");
+            }
+
             // 创建 rclone 配置（如果名称变更，删除旧的配置）
             await CreateRcloneConfigAsync(mount, oldName);
 
@@ -600,7 +615,7 @@ public class MountService
     ///   1. 默认走普通盘符模式（不注册网络共享名），从根本上避免冲突。
     ///   2. 即使在网络模式下，也使用进程 PID 拼到 volname 后缀，确保每个 rclone 进程的共享名唯一。
     /// </remarks>
-    private static string BuildMountArgs(MountInfo mount)
+    private string BuildMountArgs(MountInfo mount)
     {
         // remote path: name: 或 name:/path (rclone remote 名称需要转义特殊字符)
         // 对于包含特殊字符的名称，使用引号包裹
@@ -613,6 +628,19 @@ public class MountService
         // --vfs-cache-mode writes: 写入立即刷新到远端
         // --no-modtime: 避免每次都改文件时间戳导致 WebDAV 服务器压力
         var args = $"mount {remotePath} {mount.LocalDrive} --vfs-cache-mode writes --links";
+
+        // 缓存目录：用户可在 rclone 配置页自定义，修改后重新挂载生效。
+        // 始终显式传递 --cache-dir，避免 rclone 默认落到 C 盘且行为不可控。
+        var cacheDir = PathUtil.GetEffectiveCacheDir(_configService.Current.CacheDir);
+        try
+        {
+            Directory.CreateDirectory(cacheDir);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"创建 rclone 缓存目录失败: {cacheDir}, 错误: {ex.Message}");
+        }
+        args += $" --cache-dir \"{cacheDir}\"";
 
         // 网络模式
         if (mount.UseNetworkMode)
@@ -787,6 +815,180 @@ public class MountService
     {
         return Task.Run(() => Unmount(name));
     }
+
+    #region 连接测试
+
+    /// <summary>
+    /// 测试挂载配置的连通性（保存前预检，不创建真实挂载）。
+    /// WebDAV：HTTP(S) 请求目标 URL；FTP/SFTP：TCP 连接主机端口；
+    /// S3：TCP 连接 Endpoint（未填写则仅校验必填项）。
+    /// </summary>
+    /// <param name="mount">待测试的挂载信息（通常为编辑中的副本）</param>
+    /// <param name="cancellationToken">取消令牌</param>
+    /// <returns>是否连通及提示消息</returns>
+    public async Task<(bool Success, string Message)> TestConnectionAsync(MountInfo mount, CancellationToken cancellationToken = default)
+    {
+        if (mount == null)
+            return (false, "测试失败：挂载信息为空");
+
+        try
+        {
+            if (mount.IsWebDavType)
+            {
+                // 优先用完整 URL（含路径）做 HTTP 可达性测试，可同时校验账号密码
+                var url = !string.IsNullOrWhiteSpace(mount.Host)
+                    ? mount.ComputedUrl
+                    : (mount.Url ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(url))
+                    return (false, "请先填写主机地址");
+                return await TestHttpUrlAsync(url, mount.User, mount.Password, cancellationToken);
+            }
+
+            if (mount.IsFtpType || mount.IsSftpType)
+            {
+                if (string.IsNullOrWhiteSpace(mount.Host))
+                    return (false, "请先填写主机地址");
+                return await TestTcpConnectionAsync(mount.Host.Trim(), mount.Port, mount.Type, cancellationToken);
+            }
+
+            if (mount.IsS3Type)
+            {
+                if (string.IsNullOrWhiteSpace(mount.AccessKeyId))
+                    return (false, "请填写 Access Key ID");
+                if (string.IsNullOrWhiteSpace(mount.SecretAccessKey))
+                    return (false, "请填写 Secret Access Key");
+                if (string.IsNullOrWhiteSpace(mount.RemotePath))
+                    return (false, "请填写 Bucket 名称");
+
+                var endpointHost = TryGetHost(mount.Endpoint);
+                if (endpointHost == null)
+                {
+                    // 未填写 Endpoint（如 AWS 默认 endpoint）：仅校验必填项通过，
+                    // 实际连通性需挂载时验证
+                    return (true, "必填项完整，未填 Endpoint 时实际连通性需挂载验证");
+                }
+
+                var endpointPort = TryGetPort(mount.Endpoint, 443);
+                return await TestTcpConnectionAsync(endpointHost, endpointPort, "s3-endpoint", cancellationToken);
+            }
+
+            // 其他类型：按 URL 做 HTTP 可达性测试
+            if (string.IsNullOrWhiteSpace(mount.Url))
+                return (false, "请先填写 URL");
+
+            return await TestHttpUrlAsync(mount.Url.Trim(), mount.User, mount.Password, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"连接测试异常: {ex.Message}");
+            return (false, $"测试异常：{ex.Message}");
+        }
+    }
+
+    private async Task<(bool Success, string Message)> TestTcpConnectionAsync(
+        string host, int port, string label, CancellationToken cancellationToken)
+    {
+        if (port < 1 || port > 65535)
+            return (false, "端口号范围应为 1-65535");
+
+        try
+        {
+            using var client = new TcpClient();
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
+            try
+            {
+                await client.ConnectAsync(host, port, linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                return (false, $"连接超时：无法在 5 秒内连通 {host}:{port}");
+            }
+
+            return (true, $"连接成功：{label} {host}:{port} 可连通");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 外部取消挂载（如用户点了取消按钮），直接向上传递，不视为测试失败
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return (false, $"连接失败：{host}:{port}（{ex.Message}）");
+        }
+    }
+
+    private async Task<(bool Success, string Message)> TestHttpUrlAsync(
+        string url, string user, string password, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var handler = new HttpClientHandler();
+            var proxyUrl = _configService.Current.GetProxyUrl();
+            if (!string.IsNullOrWhiteSpace(proxyUrl)
+                && (proxyUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                    || proxyUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+            {
+                handler.Proxy = new WebProxy(proxyUrl);
+                handler.UseProxy = true;
+            }
+
+            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(8) };
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrWhiteSpace(user))
+            {
+                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password ?? ""}"));
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+            }
+
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            var status = (int)response.StatusCode;
+            if (status is 401 or 403)
+                return (true, $"服务器可连通，但需要检查用户名/密码（HTTP {status}）");
+            if (status is >= 200 and < 500)
+                return (true, $"连接成功（HTTP {status}）");
+            return (true, $"服务器有响应（HTTP {status}），建议检查路径后挂载验证");
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return (false, $"连接超时：8 秒内 {url} 无响应");
+        }
+        catch (HttpRequestException ex)
+        {
+            return (false, $"连接失败：{ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            return (false, $"连接失败：{ex.Message}");
+        }
+    }
+
+    private static string? TryGetHost(string? urlOrHost)
+    {
+        if (string.IsNullOrWhiteSpace(urlOrHost))
+            return null;
+        var text = urlOrHost.Trim();
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && !string.IsNullOrEmpty(uri.Host))
+            return uri.Host;
+        // 裸主机名（如 oss-cn-hangzhou.aliyuncs.com 或 host:port）
+        var hostPart = text.Split('/')[0].Split(':')[0].Trim();
+        return string.IsNullOrWhiteSpace(hostPart) ? null : hostPart;
+    }
+
+    private static int TryGetPort(string? urlOrHost, int defaultPort)
+    {
+        if (string.IsNullOrWhiteSpace(urlOrHost))
+            return defaultPort;
+        var text = urlOrHost.Trim();
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && !uri.IsDefaultPort)
+            return uri.Port;
+        var segments = text.Split('/')[0].Split(':');
+        if (segments.Length >= 2 && int.TryParse(segments[^1], out var port) && port >= 1 && port <= 65535)
+            return port;
+        return defaultPort;
+    }
+
+    #endregion 连接测试
 
     /// <summary>
     /// 刷新所有挂载的状态

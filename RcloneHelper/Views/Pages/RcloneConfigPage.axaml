@@ -111,7 +111,7 @@
                     <StackPanel Spacing="10">
                         <TextBlock Text="Rclone 信息" FontSize="16" FontWeight="Bold" 
                                    Foreground="{DynamicResource ForegroundBrush}" />
-                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
                             <!-- 版本 -->
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="版本：" 
                                        Foreground="{DynamicResource ForegroundMutedBrush}" VerticalAlignment="Center" />
@@ -132,10 +132,23 @@
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="缓存目录：" 
                                        Foreground="{DynamicResource ForegroundMutedBrush}" VerticalAlignment="Center"
                                        Margin="0,8,0,0" />
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding CacheDir}" 
-                                       Foreground="{DynamicResource ForegroundBrush}" 
-                                       VerticalAlignment="Center" Margin="0,8,0,0"
-                                       TextWrapping="Wrap" />
+                            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,8,0,0">
+                                <TextBox Grid.Column="0" Text="{Binding CacheDir}"
+                                         VerticalAlignment="Center"
+                                         PlaceholderText="{Binding DefaultCacheDir}" />
+                                <Button Grid.Column="1" Content="浏览" Command="{Binding BrowseCacheDirCommand}"
+                                        Margin="8,0,0,0" Padding="12,5" />
+                                <Button Grid.Column="2" Content="保存" Command="{Binding SaveCacheDirCommand}"
+                                        Margin="8,0,0,0" Padding="12,5"
+                                        Background="{DynamicResource AccentBrush}"
+                                        Foreground="{DynamicResource AccentForegroundBrush}" />
+                                <Button Grid.Column="3" Content="恢复默认" Command="{Binding ResetCacheDirCommand}"
+                                        Margin="8,0,0,0" Padding="12,5" />
+                            </Grid>
+                            <TextBlock Grid.Row="3" Grid.Column="1"
+                                       Text="修改后需重新挂载才能生效。缓存较大时建议放到非系统盘。"
+                                       Foreground="{DynamicResource ForegroundMutedBrush}" FontSize="12"
+                                       Margin="0,4,0,0" TextWrapping="Wrap" />
                         </Grid>
                     </StackPanel>
                 </Border>

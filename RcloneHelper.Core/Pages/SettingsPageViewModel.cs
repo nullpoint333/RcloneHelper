@@ -2,8 +2,10 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RcloneHelper.Helpers;
@@ -38,6 +40,9 @@ public partial class SettingsPageViewModel : ObservableObject
 
     [ObservableProperty]
     private int _proxyPort = 7890;
+
+    [ObservableProperty]
+    private bool _isTestingProxy;
 
     /// <summary>
     /// 代理协议选项列表
@@ -146,6 +151,92 @@ public partial class SettingsPageViewModel : ObservableObject
         ProxyProtocol = config.ProxyProtocol;
         ProxyHost = config.ProxyHost;
         ProxyPort = config.ProxyPort;
+    }
+
+    /// <summary>
+    /// 显式保存代理设置（页面本身改一项即自动保存，此按钮用于确认并提示）
+    /// </summary>
+    [RelayCommand]
+    private void SaveProxy()
+    {
+        if (ProxyEnabled && string.IsNullOrWhiteSpace(ProxyHost))
+        {
+            _notificationService.ShowError("请填写代理服务器地址");
+            return;
+        }
+
+        if (ProxyPort < 1 || ProxyPort > 65535)
+        {
+            _notificationService.ShowError("端口号范围应为 1-65535");
+            return;
+        }
+
+        var enabled = ProxyEnabled;
+        var protocol = ProxyProtocol;
+        var host = ProxyHost;
+        var port = ProxyPort;
+        _configService.Update(c =>
+        {
+            c.ProxyEnabled = enabled;
+            c.ProxyProtocol = protocol;
+            c.ProxyHost = host;
+            c.ProxyPort = port;
+        });
+        _notificationService.ShowSuccess("代理设置已保存，重新挂载后生效");
+    }
+
+    /// <summary>
+    /// 测试代理服务器 TCP 连通性（5 秒超时）
+    /// </summary>
+    [RelayCommand]
+    private async Task TestProxyConnectionAsync()
+    {
+        if (IsTestingProxy)
+            return;
+
+        if (!ProxyEnabled)
+        {
+            _notificationService.ShowWarning("请先启用代理");
+            return;
+        }
+
+        var host = (ProxyHost ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(host))
+        {
+            _notificationService.ShowError("请填写代理服务器地址");
+            return;
+        }
+
+        if (ProxyPort < 1 || ProxyPort > 65535)
+        {
+            _notificationService.ShowError("端口号范围应为 1-65535");
+            return;
+        }
+
+        IsTestingProxy = true;
+        try
+        {
+            using var client = new TcpClient();
+            var connectTask = client.ConnectAsync(host, ProxyPort);
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
+            var completed = await Task.WhenAny(connectTask, timeoutTask);
+            if (completed == timeoutTask)
+            {
+                _notificationService.ShowError($"连接超时：无法在 5 秒内连通 {host}:{ProxyPort}");
+                return;
+            }
+
+            await connectTask;
+            _notificationService.ShowSuccess($"代理连接成功：{ProxyProtocol}://{host}:{ProxyPort}");
+        }
+        catch (Exception ex)
+        {
+            _notificationService.ShowError($"代理连接失败：{ex.Message}");
+        }
+        finally
+        {
+            IsTestingProxy = false;
+        }
     }
 
     [RelayCommand]

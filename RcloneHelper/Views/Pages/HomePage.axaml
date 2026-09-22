@@ -332,12 +332,17 @@
                         </Grid>
                     </ScrollViewer>
 
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-                        <Button Content="保存" Command="{Binding SaveMountCommand}" 
-                                Background="{DynamicResource AccentBrush}"
-                                Foreground="{DynamicResource AccentForegroundBrush}" />
-                        <Button Content="取消" Command="{Binding CancelEditCommand}" />
-                    </StackPanel>
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,20,0,0">
+                        <Button Grid.Column="0" Content="测试连接" Command="{Binding TestConnectionCommand}"
+                                IsEnabled="{Binding !IsTestingConnection}"
+                                HorizontalAlignment="Left" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="保存" Command="{Binding SaveMountCommand}"
+                                    Background="{DynamicResource AccentBrush}"
+                                    Foreground="{DynamicResource AccentForegroundBrush}" />
+                            <Button Content="取消" Command="{Binding CancelEditCommand}" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
         </Border>

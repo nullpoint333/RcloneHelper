@@ -40,6 +40,9 @@ public partial class HomePageViewModel : ObservableObject
     [ObservableProperty]
     private MountInfo _editingMount = new();
 
+    [ObservableProperty]
+    private bool _isTestingConnection;
+
     // 记录正在编辑的原始挂载对象（用于区分新增和编辑）
     private MountInfo? _editingOriginalMount;
 
@@ -403,6 +406,34 @@ public partial class HomePageViewModel : ObservableObject
     {
         IsEditing = false;
         _editingOriginalMount = null;
+    }
+
+    /// <summary>
+    /// 测试编辑中挂载的连通性（不保存、不挂载）
+    /// </summary>
+    [RelayCommand]
+    private async Task TestConnection()
+    {
+        if (IsTestingConnection)
+            return;
+
+        IsTestingConnection = true;
+        try
+        {
+            var (success, message) = await _mountService.TestConnectionAsync(EditingMount);
+            if (success)
+                _notificationService.ShowSuccess(message);
+            else
+                _notificationService.ShowError(message);
+        }
+        catch (Exception ex)
+        {
+            _notificationService.ShowError($"测试异常：{ex.Message}");
+        }
+        finally
+        {
+            IsTestingConnection = false;
+        }
     }
 
     [RelayCommand]

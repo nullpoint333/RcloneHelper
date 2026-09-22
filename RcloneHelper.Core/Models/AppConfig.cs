@@ -63,6 +63,13 @@ public class AppConfig
     }
 
     /// <summary>
+    /// rclone 缓存目录（VFS 缓存）。
+    /// 为空表示使用默认位置（%APPDATA%\rclone\cache）。
+    /// 修改后需要重新挂载才能生效。
+    /// </summary>
+    public string CacheDir { get; set; } = "";
+
+    /// <summary>
     /// 获取完整的代理 URL
     /// </summary>
     public string GetProxyUrl()

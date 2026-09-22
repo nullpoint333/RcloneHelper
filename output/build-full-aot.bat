@@ -3,12 +3,13 @@ setlocal enabledelayedexpansion
 
 set SCRIPT_DIR=%~dp0
 set PROJECT_ROOT=%SCRIPT_DIR%..
-set OUTPUT_DIR=%SCRIPT_DIR%publish
+set OUTPUT_DIR=%SCRIPT_DIR%publish-aot
 set ISCC_PATH=C:\Program Files (x86)\Inno Setup 6\ISCC.exe
 
 echo ========================================
-echo RcloneHelper Lite Build Script
-echo Builds installer (RcloneHelper only)
+echo RcloneHelper Full AOT Build Script
+echo Builds AOT-compiled installer with WinFsp + rclone
+echo Requires: C++ Desktop workload (for NativeAOT link)
 echo ========================================
 echo.
 
@@ -19,14 +20,16 @@ if exist "%OUTPUT_DIR%" (
 )
 mkdir "%OUTPUT_DIR%"
 
-echo [Step 1/2] Publishing application...
+echo [Step 1/2] Publishing AOT application...
 echo.
 
-dotnet publish "%PROJECT_ROOT%\RcloneHelper\RcloneHelper.csproj" -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -o "%OUTPUT_DIR%"
+dotnet publish "%PROJECT_ROOT%\RcloneHelper\RcloneHelper.csproj" -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:PublishSingleFile=true -o "%OUTPUT_DIR%"
 
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo [ERROR] Publish failed!
+    echo [ERROR] AOT publish failed!
+    echo If the error mentions a missing linker, install the
+    echo "Desktop development with C++" workload in Visual Studio Installer.
     pause
     exit /b 1
 )
@@ -36,7 +39,7 @@ echo Removing PDB files...
 del /q "%OUTPUT_DIR%\*.pdb" 2>nul
 
 echo.
-echo [Step 2/2] Building lite installer...
+echo [Step 2/2] Building full AOT installer...
 echo.
 
 if not exist "%ISCC_PATH%" (
@@ -46,7 +49,7 @@ if not exist "%ISCC_PATH%" (
     exit /b 1
 )
 
-"%ISCC_PATH%" "%SCRIPT_DIR%setup-lite.iss"
+"%ISCC_PATH%" "%SCRIPT_DIR%setup-full-aot.iss"
 
 if %ERRORLEVEL% neq 0 (
     echo.
@@ -57,11 +60,11 @@ if %ERRORLEVEL% neq 0 (
 
 echo.
 echo ========================================
-echo Build completed!
+echo Full AOT Build completed!
 echo Output: %SCRIPT_DIR%
 echo ========================================
 echo.
 
-dir "%SCRIPT_DIR%*.exe" /b 2>nul | findstr /v "build-full build-lite"
+dir "%SCRIPT_DIR%*.exe" /b 2>nul | findstr /v "build-full build-lite build-aot"
 
 pause

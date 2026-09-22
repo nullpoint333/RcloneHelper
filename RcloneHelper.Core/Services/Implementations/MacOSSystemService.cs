@@ -30,7 +30,7 @@ public class MacOSSystemService : ISystemService
 
     public OSPlatform Platform => OSPlatform.OSX;
 
-    public string AppExecutablePath => System.Reflection.Assembly.GetExecutingAssembly().Location;
+    public string AppExecutablePath => Environment.ProcessPath ?? AppContext.BaseDirectory;
 
     #region 开机自启
 

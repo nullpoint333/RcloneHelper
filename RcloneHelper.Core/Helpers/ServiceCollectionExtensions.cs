@@ -55,7 +55,8 @@ public static class ServiceCollectionExtensions
                     sp.GetRequiredService<ISystemService>(),
                     sp.GetRequiredService<INotificationService>(),
                     sp.GetRequiredService<IConfigService>(),
-                    sp.GetRequiredService<MountService>()));
+                    sp.GetRequiredService<MountService>(),
+                    sp.GetRequiredService<IDialogService>()));
         services.AddSingleton<SettingsPageViewModel>(sp => new SettingsPageViewModel(
             sp.GetRequiredService<ISystemService>(),
             sp.GetRequiredService<INotificationService>(),

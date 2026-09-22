@@ -309,6 +309,50 @@ public class WindowsSystemService : ISystemService
             _logger.Warning($"获取活动挂载失败: {ex.Message}");
         }
 
+        // 快速路径：rclone/WinFsp 挂载的卷，其文件系统为 "FUSE-rclone"，
+        // 卷标即 --volname（普通模式 = 挂载名，网络模式 = 名称_随机后缀）。
+        // 直接枚举驱动器即可，无需启动任何子进程（net use / PowerShell 都很慢）。
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                try
+                {
+                    if (!drive.IsReady) continue;
+                    if (!string.Equals(drive.DriveFormat, "FUSE-rclone", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var label = drive.VolumeLabel;
+                    if (string.IsNullOrWhiteSpace(label)) continue;
+
+                    mounts[label] = drive.Name.TrimEnd('\\');
+                }
+                catch
+                {
+                    // 个别驱动器枚举失败（如未就绪的网络盘），跳过
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"枚举 rclone 挂载卷失败: {ex.Message}");
+        }
+
+        // 归一化网络模式 volname 随机后缀：Name_xxxxxxxx -> Name。
+        // BuildMountArgs 为网络模式拼接了 8 位随机后缀避免共享名冲突，
+        // 导致卷标/共享名无法与配置名精确匹配，这里仅补充缺失项，不覆盖精确匹配。
+        var suffixedNames = mounts.Keys
+            .Where(k => k.Length > 9
+                && k[k.Length - 9] == '_'
+                && k.Substring(k.Length - 8).All(c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')))
+            .ToList();
+        foreach (var suffixed in suffixedNames)
+        {
+            var baseName = suffixed.Substring(0, suffixed.Length - 9);
+            if (!mounts.ContainsKey(baseName))
+                mounts[baseName] = mounts[suffixed];
+        }
+
         return mounts;
     }
 
@@ -316,37 +360,75 @@ public class WindowsSystemService : ISystemService
     {
         var result = new Dictionary<int, string>();
 
+        // 优先：一次 PowerShell 查询拿到所有 rclone 进程的命令行。
+        // 旧实现是每个进程启动一次 powershell.exe（每次 ~500ms），
+        // N 个挂载就要几秒；这里改为单次调用。
         try
         {
-            // .NET Core 3.0+ 可通过 Process.GetProcessesByName 获取命令行参数
-            foreach (var proc in Process.GetProcessesByName("rclone"))
+            var psi = new ProcessStartInfo
             {
-                try
-                {
-                    if (proc.Id == 0)
-                    {
-                        proc.Dispose();
-                        continue;
-                    }
+                FileName = "powershell",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-NonInteractive");
+            psi.ArgumentList.Add("-Command");
+            psi.ArgumentList.Add("Get-CimInstance Win32_Process -Filter \"Name='rclone.exe'\" | ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }");
 
-                    // Arguments 为空（权限不足等），尝试通过 PowerShell 获取
-                    var psResult = GetProcessCommandLineByPowerShell(proc.Id);
-                    if (!string.IsNullOrEmpty(psResult))
-                    {
-                        result[proc.Id] = psResult;
-                    }
-                    proc.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    _logger.Warning($"获取进程 {proc.Id} 命令行失败: {ex.Message}");
-                    proc.Dispose();
-                }
+            using var process = new Process { StartInfo = psi };
+            process.Start();
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(8000);
+
+            foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                var sep = line.IndexOf('|');
+                if (sep <= 0) continue;
+                if (!int.TryParse(line[..sep].Trim(), out var pid) || pid == 0) continue;
+
+                var cmdLine = line[(sep + 1)..].Trim();
+                if (!string.IsNullOrEmpty(cmdLine))
+                    result[pid] = cmdLine;
             }
         }
         catch (Exception ex)
         {
-            _logger.Warning($"获取 rclone 进程列表失败: {ex.Message}");
+            _logger.Warning($"批量获取 rclone 进程列表失败: {ex.Message}");
+        }
+
+        // 兜底：批量查询失败但确实存在 rclone 进程时，退回逐个进程查询
+        if (result.Count == 0)
+        {
+            try
+            {
+                foreach (var proc in Process.GetProcessesByName("rclone"))
+                {
+                    try
+                    {
+                        if (proc.Id == 0)
+                            continue;
+
+                        var cmdLine = GetProcessCommandLineByPowerShell(proc.Id);
+                        if (!string.IsNullOrEmpty(cmdLine))
+                            result[proc.Id] = cmdLine;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Warning($"获取进程 {proc.Id} 命令行失败: {ex.Message}");
+                    }
+                    finally
+                    {
+                        proc.Dispose();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"获取 rclone 进程列表失败: {ex.Message}");
+            }
         }
 
         return result;
@@ -380,7 +462,7 @@ public class WindowsSystemService : ISystemService
     /// <summary>
     /// 解析 rclone mount 命令行，提取挂载信息
     /// 命令行格式: "path/to/rclone.exe" mount &lt;remote&gt; &lt;drive&gt;: [options]
-    /// 示例: "D:\program\rclone-v1.73.3-windows-amd64\rclone.exe" mount 飞牛: Y: --vfs-cache-mode writes --links --network-mode --volname \\rclone\飞牛
+    /// 示例: "D:\program\rclone-v1.75.1-windows-amd64\rclone.exe" mount 飞牛: Y: --vfs-cache-mode writes --links --network-mode --volname \\rclone\飞牛
     /// </summary>
     private RcloneMountInfo? ParseRcloneMountCommandLine(int pid, string commandLine)
     {

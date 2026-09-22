@@ -72,6 +72,25 @@
                                    Foreground="{DynamicResource ForegroundMutedBrush}"
                                    FontSize="11" TextWrapping="Wrap"
                                    IsVisible="{Binding ProxyEnabled}" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="10"
+                                    IsVisible="{Binding ProxyEnabled}">
+                            <Button Content="保存代理设置"
+                                    Command="{Binding SaveProxyCommand}"
+                                    Padding="15,8"
+                                    Background="{DynamicResource AccentBrush}"
+                                    Foreground="{DynamicResource AccentForegroundBrush}" />
+                            <Button Content="测试连接"
+                                    Command="{Binding TestProxyConnectionCommand}"
+                                    IsEnabled="{Binding !IsTestingProxy}"
+                                    Padding="15,8"
+                                    Background="{DynamicResource ButtonBrush}"
+                                    Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </StackPanel>
+                        <TextBlock Text="保存后需重新挂载才能生效。测试连接为 TCP 连通性检测（5 秒超时）。"
+                                   Foreground="{DynamicResource ForegroundMutedBrush}"
+                                   FontSize="11" TextWrapping="Wrap"
+                                   IsVisible="{Binding ProxyEnabled}" />
                     </StackPanel>
                 </Border>
 
