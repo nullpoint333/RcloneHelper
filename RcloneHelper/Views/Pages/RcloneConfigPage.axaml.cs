@@ -9,13 +9,11 @@ public partial class RcloneConfigPage : UserControl
     {
         InitializeComponent();
 
-        // 每次页面显示时自动刷新
-        this.AttachedToVisualTree += (_, _) =>
+        // 每次页面显示时自动刷新依赖状态与 remote 列表
+        AttachedToVisualTree += async (_, _) =>
         {
             if (DataContext is RcloneConfigPageViewModel vm)
-            {
-                vm.RefreshConfigCommand.Execute(null);
-            }
+                await vm.ActivateAsync();
         };
     }
 }

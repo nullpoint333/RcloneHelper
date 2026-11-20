@@ -70,6 +70,7 @@ public partial class MountInfo : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsSftpType))]
     [NotifyPropertyChangedFor(nameof(IsS3Type))]
     [NotifyPropertyChangedFor(nameof(UseUrlInput))]
+    [NotifyPropertyChangedFor(nameof(TypeLabel))]
     private string _type = "webdav";
 
     /// <summary>
@@ -112,6 +113,33 @@ public partial class MountInfo : ObservableObject
 
     [ObservableProperty]
     private string _status = "未挂载";
+
+    /// <summary>
+    /// 后台上传中的文件数量（来自 VFS 写缓存）
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasPendingUploads))]
+    private int _pendingUploadFiles;
+
+    /// <summary>
+    /// 后台上传中的字节数
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PendingUploadText))]
+    private long _pendingUploadBytes;
+
+    /// <summary>
+    /// 是否存在后台上传任务
+    /// </summary>
+    public bool HasPendingUploads => PendingUploadFiles > 0;
+
+    /// <summary>
+    /// 后台上传进度文本，例如 "2 个文件 · 3.4 GB"
+    /// </summary>
+    public string PendingUploadText
+        => PendingUploadFiles > 0
+            ? $"{PendingUploadFiles} 个文件 · {PathUtil.FormatSize(PendingUploadBytes)}"
+            : "";
 
     /// <summary>
     /// 用于取消挂载操作的 CancellationTokenSource
@@ -242,6 +270,74 @@ public partial class MountInfo : ObservableObject
     public bool UseUrlInput => !IsNetworkStorageType;
 
     /// <summary>
+    /// 类型显示名（用于列表徽标）
+    /// </summary>
+    public string TypeLabel => Type.ToLowerInvariant() switch
+    {
+        "webdav" => "WebDAV",
+        "ftp" => "FTP",
+        "sftp" => "SFTP",
+        "s3" => "S3",
+        var other => other.ToUpperInvariant()
+    };
+
+    /// <summary>
+    /// 校验配置是否完整，返回第一条错误信息；校验通过返回 null。
+    /// 新增/编辑挂载与导入配置共用，避免各层重复校验。
+    /// </summary>
+    public string? Validate()
+    {
+        if (string.IsNullOrWhiteSpace(Name))
+            return "请输入名称";
+
+        if (IsS3Type)
+        {
+            if (string.IsNullOrWhiteSpace(AccessKeyId))
+                return "请输入 Access Key ID";
+            if (string.IsNullOrWhiteSpace(SecretAccessKey))
+                return "请输入 Secret Access Key";
+            if (string.IsNullOrWhiteSpace(RemotePath))
+                return "请输入 Bucket 名称";
+        }
+        else if (IsNetworkStorageType)
+        {
+            if (string.IsNullOrWhiteSpace(Host))
+                return "请输入主机地址";
+            if (Port is < MinPort or > MaxPort)
+                return "端口号范围应为 1-65535";
+        }
+        else if (string.IsNullOrWhiteSpace(Url))
+        {
+            return "请输入 URL";
+        }
+
+        if (string.IsNullOrWhiteSpace(LocalDrive))
+            return "请选择挂载点";
+
+        return null;
+    }
+
+    /// <summary>
+    /// 兼容早期版本保存的配置：只有完整 Url、没有拆分的 Host/Port/Path 时，
+    /// 从 Url 反向解析出表单字段，避免编辑旧配置时输入框全空。
+    /// </summary>
+    public void EnsureUrlPartsFromUrl()
+    {
+        if (!IsNetworkStorageType || !string.IsNullOrWhiteSpace(Host))
+            return;
+
+        if (!Uri.TryCreate((Url ?? "").Trim(), UriKind.Absolute, out var uri))
+            return;
+
+        if (IsWebDavType)
+            UseHttps = uri.Scheme.Equals("https", StringComparison.OrdinalIgnoreCase);
+
+        Host = uri.Host;
+        Port = uri.Port > 0 ? uri.Port : DefaultPort;
+        Path = uri.AbsolutePath.TrimStart('/');
+    }
+
+    /// <summary>
     /// 获取默认端口
     /// </summary>
     public int DefaultPort => Type switch
@@ -309,7 +405,7 @@ public partial class MountInfo : ObservableObject
 
     public static MountInfo FromConfig(MountConfig config)
     {
-        return new MountInfo
+        var info = new MountInfo
         {
             Name = config.Name,
             RemotePath = config.RemotePath,
@@ -335,6 +431,11 @@ public partial class MountInfo : ObservableObject
             IsMounted = false,
             Status = "未挂载"
         };
+
+        // 兼容旧配置：早期版本只保存完整 Url，没有拆分 Host/Port/Path
+        info.EnsureUrlPartsFromUrl();
+
+        return info;
     }
 
     public MountConfig ToConfig()

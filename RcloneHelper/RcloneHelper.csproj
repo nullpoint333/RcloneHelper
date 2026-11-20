@@ -5,7 +5,8 @@
     <Nullable>enable</Nullable>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <!-- 编译期绑定：绑定路径写错会在构建时报错，并且对 AOT/裁剪友好 -->
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Platforms>AnyCPU;x64</Platforms>
     <!-- AOT 仅由 output/build-aot.bat 通过 -p:PublishAot=true 按需开启，

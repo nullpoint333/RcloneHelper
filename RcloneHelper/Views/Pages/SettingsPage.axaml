@@ -3,168 +3,184 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:RcloneHelper.Core.Pages"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="620"
              x:Class="RcloneHelper.Views.Pages.SettingsPage"
              x:DataType="vm:SettingsPageViewModel">
-    <Design.DataContext>
-        <vm:SettingsPageViewModel />
-    </Design.DataContext>
-    <Grid RowDefinitions="Auto,*">
-        <!-- 标题栏 -->
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" Padding="15">
-            <TextBlock Text="配置" FontSize="20" FontWeight="Bold"
-                       Foreground="{DynamicResource ForegroundBrush}" VerticalAlignment="Center" />
-        </Border>
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="20,20,20,28" Spacing="16" MaxWidth="860" HorizontalAlignment="Left">
 
-        <!-- 配置内容 -->
-        <ScrollViewer Grid.Row="1" Margin="20,0,0,0">
-            <StackPanel Spacing="20">
-                <TextBlock Text="系统设置" FontWeight="Bold" FontSize="16"
-                           Foreground="{DynamicResource ForegroundBrush}" />
-
-                <Border Background="{DynamicResource CardBrush}" Padding="15" CornerRadius="5">
-                    <StackPanel Spacing="15">
+                <!-- ================= 常规 ================= -->
+                <Border Classes="card">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="通用" Classes="cardTitle" />
                         <CheckBox Content="开机启动" IsChecked="{Binding AutoStartEnabled}"
                                   Foreground="{DynamicResource ForegroundBrush}" />
-                        <CheckBox Content="静默启动" IsChecked="{Binding StartSilently}"
-                                  Foreground="{DynamicResource ForegroundBrush}"
-                                  IsEnabled="{Binding AutoStartEnabled}" />
-                        <TextBlock Text="启用后，开机启动时程序将最小化到系统托盘"
-                                   Foreground="{DynamicResource ForegroundMutedBrush}" FontSize="12"
-                                   IsVisible="{Binding AutoStartEnabled}" />
+                        <StackPanel Spacing="4">
+                            <CheckBox Content="静默启动（最小化到托盘）" IsChecked="{Binding StartSilently}"
+                                      IsEnabled="{Binding AutoStartEnabled}"
+                                      Foreground="{DynamicResource ForegroundBrush}" />
+                            <TextBlock Text="仅在开机自启时生效。" Classes="hint" Margin="28,0,0,0" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="代理设置" FontWeight="Bold" FontSize="16" Margin="0,10,0,0"
-                           Foreground="{DynamicResource ForegroundBrush}" />
-
-                <Border Background="{DynamicResource CardBrush}" Padding="15" CornerRadius="5">
-                    <StackPanel Spacing="15">
+                <!-- ================= 代理 ================= -->
+                <Border Classes="card">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="网络代理" Classes="cardTitle" />
                         <CheckBox Content="启用代理" IsChecked="{Binding ProxyEnabled}"
                                   Foreground="{DynamicResource ForegroundBrush}" />
-                        <TextBlock Text="启用后，所有 rclone 挂载操作都将通过指定的代理服务器访问网络"
-                                   Foreground="{DynamicResource ForegroundMutedBrush}" FontSize="12"
+                        <TextBlock Text="启用后，所有 rclone 操作与连接测试都会经过该代理。"
+                                   Classes="hint" Margin="28,0,0,0"
                                    IsVisible="{Binding ProxyEnabled}" />
 
-                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" IsVisible="{Binding ProxyEnabled}">
-                            <TextBlock Grid.Column="0" Text="代理服务器："
-                                       Foreground="{DynamicResource ForegroundMutedBrush}"
-                                       VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <ComboBox Grid.Column="1" SelectedItem="{Binding ProxyProtocol}"
-                                      ItemsSource="{Binding ProxyProtocolOptions}" MinWidth="80"
-                                      VerticalAlignment="Center" Margin="0,5" />
-                            <TextBox Grid.Column="2" Text="{Binding ProxyHost}"
-                                     PlaceholderText="127.0.0.1" VerticalAlignment="Center" Margin="5,5" />
-                            <TextBlock Grid.Column="3" Text=":" VerticalAlignment="Center"
-                                       Foreground="{DynamicResource ForegroundMutedBrush}" Margin="0,0,0,0" />
-                        </Grid>
+                        <StackPanel Spacing="10" IsVisible="{Binding ProxyEnabled}">
+                            <Grid ColumnDefinitions="120,*">
+                                <TextBlock Grid.Column="0" Text="代理服务器" Classes="fieldLabel" />
+                                <Grid Grid.Column="1" ColumnDefinitions="100,*,Auto,84">
+                                    <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding ProxyProtocolOptions}"
+                                              SelectedItem="{Binding ProxyProtocol}" />
+                                    <TextBox Grid.Column="1" Text="{Binding ProxyHost}"
+                                             PlaceholderText="127.0.0.1" Margin="6,0,0,0" />
+                                    <TextBlock Grid.Column="2" Text=":" VerticalAlignment="Center" Margin="4,0"
+                                               Foreground="{DynamicResource ForegroundMutedBrush}" />
+                                    <TextBox Grid.Column="3" Text="{Binding ProxyPort}"
+                                             PlaceholderText="7890" Margin="4,0,0,0" />
+                                </Grid>
+                            </Grid>
 
-                        <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding ProxyEnabled}">
-                            <TextBlock Grid.Column="0" Text="端口号："
-                                       Foreground="{DynamicResource ForegroundMutedBrush}"
-                                       VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <TextBox Grid.Column="1" Text="{Binding ProxyPort}"
-                                     PlaceholderText="7890" Width="100" HorizontalAlignment="Left"
-                                     VerticalAlignment="Center" />
-                        </Grid>
+                            <Grid ColumnDefinitions="120,*">
+                                <TextBlock Grid.Column="0" Text="认证（可选）" Classes="fieldLabel" />
+                                <Grid Grid.Column="1" ColumnDefinitions="*,*">
+                                    <TextBox Grid.Column="0" Text="{Binding ProxyUser}"
+                                             PlaceholderText="用户名" />
+                                    <TextBox Grid.Column="1" Text="{Binding ProxyPassword}"
+                                             PasswordChar="*" PlaceholderText="密码" Margin="6,0,0,0" />
+                                </Grid>
+                            </Grid>
 
-                        <TextBlock Text="常用端口: HTTP代理 80/8080, HTTPS代理 443, SOCKS5代理 1080/7890"
-                                   Foreground="{DynamicResource ForegroundMutedBrush}"
-                                   FontSize="11" TextWrapping="Wrap"
-                                   IsVisible="{Binding ProxyEnabled}" />
+                            <TextBlock Text="常用端口：HTTP 80/8080，HTTPS 443，SOCKS5 1080/7890。保存后需重新挂载才能生效。"
+                                       Classes="hint" />
 
-                        <StackPanel Orientation="Horizontal" Spacing="10"
-                                    IsVisible="{Binding ProxyEnabled}">
-                            <Button Content="保存代理设置"
-                                    Command="{Binding SaveProxyCommand}"
-                                    Padding="15,8"
-                                    Background="{DynamicResource AccentBrush}"
-                                    Foreground="{DynamicResource AccentForegroundBrush}" />
-                            <Button Content="测试连接"
-                                    Command="{Binding TestProxyConnectionCommand}"
-                                    IsEnabled="{Binding !IsTestingProxy}"
-                                    Padding="15,8"
-                                    Background="{DynamicResource ButtonBrush}"
-                                    Foreground="{DynamicResource ButtonForegroundBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Classes="primary" Content="保存代理设置"
+                                        Command="{Binding SaveProxyCommand}" />
+                                <Button Classes="secondary" Content="测试连接"
+                                        Command="{Binding TestProxyConnectionCommand}"
+                                        IsEnabled="{Binding !IsTestingProxy}" />
+                            </StackPanel>
                         </StackPanel>
-                        <TextBlock Text="保存后需重新挂载才能生效。测试连接为 TCP 连通性检测（5 秒超时）。"
-                                   Foreground="{DynamicResource ForegroundMutedBrush}"
-                                   FontSize="11" TextWrapping="Wrap"
-                                   IsVisible="{Binding ProxyEnabled}" />
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="数据存储" FontWeight="Bold" FontSize="16" Margin="0,10,0,0"
-                           Foreground="{DynamicResource ForegroundBrush}" />
-
-                <Border Background="{DynamicResource CardBrush}" Padding="15" CornerRadius="5">
-                    <StackPanel Spacing="10">
-                        <!-- 程序数据目录 -->
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Grid.Column="0" Text="程序数据："
-                                       Foreground="{DynamicResource ForegroundMutedBrush}"
-                                       VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <TextBlock Grid.Column="1" Text="{Binding AppDataPath}"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
-                            <Button Grid.Column="2" Content="打开"
-                                    Command="{Binding OpenAppDataFolderCommand}"
-                                    Padding="10,5" Margin="10,0,0,0"
-                                    Background="{DynamicResource ButtonBrush}"
-                                    Foreground="{DynamicResource ButtonForegroundBrush}" />
+                <!-- ================= rclone 缓存 ================= -->
+                <Border Classes="card">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" Spacing="2">
+                                <TextBlock Text="rclone 缓存" Classes="cardTitle" />
+                                <TextBlock Text="挂载时的 VFS 缓存目录。缓存较大时建议放到非系统盘。"
+                                           Classes="hint" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="{Binding CacheSizeText}" Classes="hint"
+                                       VerticalAlignment="Center" />
                         </Grid>
 
-                        <!-- 程序所在位置 -->
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                            <TextBlock Grid.Column="0" Text="程序位置："
-                                       Foreground="{DynamicResource ForegroundMutedBrush}"
-                                       VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <TextBlock Grid.Column="1" Text="{Binding AppLocation}"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
-                            <Button Grid.Column="2" Content="打开"
-                                    Command="{Binding OpenAppLocationFolderCommand}"
-                                    Padding="10,5" Margin="10,0,0,0"
-                                    Background="{DynamicResource ButtonBrush}"
-                                    Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        <Grid ColumnDefinitions="120,*,Auto,Auto">
+                            <TextBlock Grid.Column="0" Text="缓存目录" Classes="fieldLabel" />
+                            <TextBox Grid.Column="1" Text="{Binding CacheDir}"
+                                     PlaceholderText="留空 = 使用默认位置" />
+                            <Button Grid.Column="2" Classes="secondary" Content="浏览" Margin="8,0,0,0"
+                                    Command="{Binding BrowseCacheDirCommand}" />
+                            <Button Grid.Column="3" Classes="primary" Content="保存" Margin="8,0,0,0"
+                                    Command="{Binding SaveCacheSettingsCommand}" />
                         </Grid>
 
-                        <!-- 分隔线 -->
-                        <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
+                        <Grid ColumnDefinitions="120,*">
+                            <TextBlock Grid.Column="0" Text="缓存上限" Classes="fieldLabel" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                                <TextBox Text="{Binding VfsCacheMaxSize}" Width="180"
+                                         PlaceholderText="留空 = 不限制，例如 10G" />
+                                <TextBlock Text="支持 500M / 10G / off 等写法"
+                                           Classes="hint" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
 
-                        <!-- 配置导入导出 -->
-                        <TextBlock Text="配置备份与恢复"
-                                   Foreground="{DynamicResource ForegroundMutedBrush}"
-                                   FontSize="12" Margin="0,5,0,0" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <Button Content="导出配置"
-                                    Command="{Binding ExportConfigCommand}"
-                                    Padding="15,8"
-                                    Background="{DynamicResource AccentBrush}"
-                                    Foreground="{DynamicResource AccentForegroundBrush}" />
-                            <Button Content="导入配置"
-                                    Command="{Binding ImportConfigCommand}"
-                                    Padding="15,8"
-                                    Background="{DynamicResource ButtonBrush}"
-                                    Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        <Border Classes="divider" />
+
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Classes="ghost" Command="{Binding OpenCacheFolderCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Path Width="13" Height="13" Stretch="Uniform"
+                                          Fill="{DynamicResource ForegroundSecondaryBrush}"
+                                          Data="{DynamicResource IconFolder}" />
+                                    <TextBlock Text="打开文件夹" FontSize="12" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="ghost" Command="{Binding RefreshCacheSizeCommand}"
+                                    IsEnabled="{Binding !IsCacheBusy}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Path Width="13" Height="13" Stretch="Uniform"
+                                          Fill="{DynamicResource ForegroundSecondaryBrush}"
+                                          Data="{DynamicResource IconRefresh}" />
+                                    <TextBlock Text="重新统计" FontSize="12" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="ghost" Content="清理缓存" FontSize="12"
+                                    Command="{Binding ClearCacheCommand}"
+                                    IsEnabled="{Binding !IsCacheBusy}" />
+                            <Button Classes="ghost" Content="恢复默认" FontSize="12"
+                                    Command="{Binding ResetCacheSettingsCommand}" />
                         </StackPanel>
-                        <TextBlock Text="导出会将所有挂载配置保存为 JSON 文件&#x0a;导入会从配置目录读取备份文件（跳过已存在的挂载）"
-                                   Foreground="{DynamicResource ForegroundMutedBrush}"
-                                   FontSize="11" TextWrapping="Wrap" />
+
+                        <TextBlock Text="{Binding EffectiveCacheDir, StringFormat='当前生效路径：{0}'}"
+                                   Classes="hint" TextWrapping="Wrap" />
+                        <TextBlock Text="缓存目录与上限修改后，需要卸载并重新挂载才会生效。清理缓存不会影响远端文件。"
+                                   Classes="hint" />
                     </StackPanel>
                 </Border>
 
-                <TextBlock Text="关于" FontWeight="Bold" FontSize="16" Margin="0,10,0,0"
-                           Foreground="{DynamicResource ForegroundBrush}" />
+                <!-- ================= 数据 ================= -->
+                <Border Classes="card">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="数据与备份" Classes="cardTitle" />
 
-                <Border Background="{DynamicResource CardBrush}" Padding="15" CornerRadius="5" Margin="0,0,0,20">
-                    <StackPanel Spacing="5">
-                        <TextBlock Text="{Binding AppVersionLabel}"
-                                   Foreground="{DynamicResource ForegroundBrush}" />
-                        <TextBlock Text="网络存储挂载管理工具"
-                                   Foreground="{DynamicResource ForegroundMutedBrush}" />
+                        <Grid ColumnDefinitions="120,*,Auto">
+                            <TextBlock Grid.Column="0" Text="程序数据" Classes="fieldLabel" />
+                            <TextBlock Grid.Column="1" Text="{Binding AppDataPath}" Classes="valueText" />
+                            <Button Grid.Column="2" Classes="secondary" Content="打开" Padding="12,5"
+                                    Command="{Binding OpenAppDataFolderCommand}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="120,*,Auto">
+                            <TextBlock Grid.Column="0" Text="程序位置" Classes="fieldLabel" />
+                            <TextBlock Grid.Column="1" Text="{Binding AppLocation}" Classes="valueText" />
+                            <Button Grid.Column="2" Classes="secondary" Content="打开" Padding="12,5"
+                                    Command="{Binding OpenAppLocationFolderCommand}" />
+                        </Grid>
+
+                        <Border Classes="divider" />
+
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Classes="primary" Content="导出配置" Command="{Binding ExportConfigCommand}" />
+                                <Button Classes="secondary" Content="导入配置" Command="{Binding ImportConfigCommand}" />
+                            </StackPanel>
+                            <TextBlock Text="导出会把所有挂载配置保存为 JSON；导入会读取配置目录中最新的备份，并跳过同名挂载。"
+                                       Classes="hint" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ================= 关于 ================= -->
+                <Border Classes="card">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="关于" Classes="cardTitle" />
+                        <TextBlock Text="{Binding AppVersionLabel}" Classes="valueText" Margin="0,4,0,0" />
+                        <TextBlock Text="基于 Avalonia UI 的 rclone 挂载管理工具，支持 WebDAV / FTP / SFTP / S3。"
+                                   Classes="hint" />
                     </StackPanel>
                 </Border>
             </StackPanel>

@@ -21,6 +21,7 @@ public partial class SettingsPageViewModel : ObservableObject
     private readonly INotificationService _notificationService;
     private readonly IConfigService _configService;
     private readonly MountService _mountService;
+    private readonly IDialogService _dialogService;
     private bool _isInitializing = true;
 
     [ObservableProperty]
@@ -42,12 +43,37 @@ public partial class SettingsPageViewModel : ObservableObject
     private int _proxyPort = 7890;
 
     [ObservableProperty]
+    private string _proxyUser = "";
+
+    [ObservableProperty]
+    private string _proxyPassword = "";
+
+    [ObservableProperty]
     private bool _isTestingProxy;
+
+    /// <summary>
+    /// 缓存目录草稿值（空表示使用默认位置）
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EffectiveCacheDir))]
+    private string _cacheDir = "";
+
+    /// <summary>
+    /// 缓存上限草稿值（空表示不限制）
+    /// </summary>
+    [ObservableProperty]
+    private string _vfsCacheMaxSize = "";
+
+    [ObservableProperty]
+    private string _cacheSizeText = "缓存占用：未统计";
+
+    [ObservableProperty]
+    private bool _isCacheBusy;
 
     /// <summary>
     /// 代理协议选项列表
     /// </summary>
-    public string[] ProxyProtocolOptions { get; } = new[] { "http", "https", "socks5" };
+    public string[] ProxyProtocolOptions { get; } = { "http", "https", "socks5" };
 
     /// <summary>
     /// 程序数据存放路径
@@ -58,6 +84,16 @@ public partial class SettingsPageViewModel : ObservableObject
     /// 程序所在位置
     /// </summary>
     public string AppLocation => PathUtil.AppLocation;
+
+    /// <summary>
+    /// 默认 rclone 缓存目录
+    /// </summary>
+    public string DefaultCacheDir => PathUtil.DefaultRcloneCacheDir;
+
+    /// <summary>
+    /// 当前实际生效的缓存目录
+    /// </summary>
+    public string EffectiveCacheDir => PathUtil.GetEffectiveCacheDir(CacheDir);
 
     /// <summary>
     /// 应用版本号
@@ -75,17 +111,21 @@ public partial class SettingsPageViewModel : ObservableObject
         ISystemService systemService,
         INotificationService notificationService,
         IConfigService configService,
-        MountService mountService)
+        MountService mountService,
+        IDialogService dialogService)
     {
         _systemService = systemService;
         _notificationService = notificationService;
         _configService = configService;
         _mountService = mountService;
+        _dialogService = dialogService;
 
         CheckAutoStartStatus();
         LoadSettings();
         _isInitializing = false;
     }
+
+    #region 系统设置
 
     partial void OnAutoStartEnabledChanged(bool value)
     {
@@ -109,6 +149,46 @@ public partial class SettingsPageViewModel : ObservableObject
 
         _configService.Update(c => c.StartSilently = value);
     }
+
+    private void CheckAutoStartStatus()
+    {
+        AutoStartEnabled = _systemService.IsAutoStartEnabled;
+    }
+
+    private void LoadSettings()
+    {
+        var config = _configService.Current;
+        StartSilently = config.StartSilently;
+        ProxyEnabled = config.ProxyEnabled;
+        ProxyProtocol = config.ProxyProtocol;
+        ProxyHost = config.ProxyHost;
+        ProxyPort = config.ProxyPort;
+        ProxyUser = config.ProxyUser;
+        ProxyPassword = SecureStorageHelper.Decrypt(config.ProxyPassword);
+        CacheDir = config.CacheDir;
+        VfsCacheMaxSize = config.VfsCacheMaxSize;
+    }
+
+    /// <summary>
+    /// 页面被显示时调用：刷新缓存统计等惰性信息
+    /// </summary>
+    public async Task ActivateAsync()
+    {
+        try
+        {
+            CacheDir = _configService.Current.CacheDir;
+            VfsCacheMaxSize = _configService.Current.VfsCacheMaxSize;
+            await RefreshCacheSizeAsync();
+        }
+        catch (Exception ex)
+        {
+            _notificationService.ShowError($"加载设置失败: {ex.Message}");
+        }
+    }
+
+    #endregion
+
+    #region 代理
 
     partial void OnProxyEnabledChanged(bool value)
     {
@@ -138,21 +218,6 @@ public partial class SettingsPageViewModel : ObservableObject
         _configService.Update(c => c.ProxyPort = value);
     }
 
-    private void CheckAutoStartStatus()
-    {
-        AutoStartEnabled = _systemService.IsAutoStartEnabled;
-    }
-
-    private void LoadSettings()
-    {
-        var config = _configService.Current;
-        StartSilently = config.StartSilently;
-        ProxyEnabled = config.ProxyEnabled;
-        ProxyProtocol = config.ProxyProtocol;
-        ProxyHost = config.ProxyHost;
-        ProxyPort = config.ProxyPort;
-    }
-
     /// <summary>
     /// 显式保存代理设置（页面本身改一项即自动保存，此按钮用于确认并提示）
     /// </summary>
@@ -175,12 +240,16 @@ public partial class SettingsPageViewModel : ObservableObject
         var protocol = ProxyProtocol;
         var host = ProxyHost;
         var port = ProxyPort;
+        var user = ProxyUser;
+        var password = SecureStorageHelper.Encrypt(ProxyPassword);
         _configService.Update(c =>
         {
             c.ProxyEnabled = enabled;
             c.ProxyProtocol = protocol;
             c.ProxyHost = host;
             c.ProxyPort = port;
+            c.ProxyUser = user;
+            c.ProxyPassword = password;
         });
         _notificationService.ShowSuccess("代理设置已保存，重新挂载后生效");
     }
@@ -239,39 +308,188 @@ public partial class SettingsPageViewModel : ObservableObject
         }
     }
 
+    #endregion
+
+    #region rclone 缓存
+
     [RelayCommand]
-    private void OpenAppDataFolder()
+    private async Task BrowseCacheDirAsync()
     {
+        var picked = await _dialogService.ShowOpenFolderPickerAsync("选择 rclone 缓存目录", CacheDir);
+        if (!string.IsNullOrWhiteSpace(picked))
+            CacheDir = picked;
+    }
+
+    /// <summary>
+    /// 保存缓存目录与缓存上限（两项一起写入配置）
+    /// </summary>
+    [RelayCommand]
+    private void SaveCacheSettings()
+    {
+        if (!AppConfig.IsValidCacheSize(VfsCacheMaxSize))
+        {
+            _notificationService.ShowError("缓存上限格式不正确，示例：10G、500M，留空表示不限制");
+            return;
+        }
+
+        var dir = "";
+        if (!string.IsNullOrWhiteSpace(CacheDir))
+        {
+            dir = PathUtil.NormalizeDir(CacheDir);
+            try
+            {
+                Directory.CreateDirectory(dir);
+            }
+            catch (Exception ex)
+            {
+                _notificationService.ShowError($"无法创建缓存目录: {ex.Message}");
+                return;
+            }
+        }
+
+        var maxSize = AppConfig.NormalizeCacheSize(VfsCacheMaxSize);
+        _configService.Update(c =>
+        {
+            c.CacheDir = dir;
+            c.VfsCacheMaxSize = maxSize;
+        });
+
+        CacheDir = dir;
+        VfsCacheMaxSize = maxSize;
+        _notificationService.ShowSuccess("缓存设置已保存，重新挂载后生效");
+        _ = RefreshCacheSizeAsync();
+    }
+
+    [RelayCommand]
+    private async Task ResetCacheSettingsAsync()
+    {
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            "恢复默认缓存设置",
+            "将把缓存目录恢复为默认位置，并取消缓存上限。是否继续？");
+        if (!confirmed)
+            return;
+
+        _configService.Update(c =>
+        {
+            c.CacheDir = "";
+            c.VfsCacheMaxSize = "";
+        });
+
+        CacheDir = "";
+        VfsCacheMaxSize = "";
+        _notificationService.ShowSuccess("已恢复默认缓存设置，重新挂载后生效");
+        await RefreshCacheSizeAsync();
+    }
+
+    [RelayCommand]
+    private void OpenCacheFolder()
+    {
+        var folder = EffectiveCacheDir;
         try
         {
-            if (Directory.Exists(AppDataPath))
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = AppDataPath,
-                    UseShellExecute = true
-                });
-            }
+                FileName = folder,
+                UseShellExecute = true
+            });
         }
         catch (Exception ex)
         {
-            _notificationService.ShowError($"无法打开文件夹: {ex.Message}");
+            _notificationService.ShowError($"无法打开缓存目录: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// 清理缓存目录内容（挂载运行中禁止清理，避免文件被占用）
+    /// </summary>
+    [RelayCommand]
+    private async Task ClearCacheAsync()
+    {
+        var mounted = _mountService.Mounts.Count(m => m.IsMounted);
+        if (mounted > 0)
+        {
+            _notificationService.ShowWarning($"还有 {mounted} 个连接处于挂载状态，请先全部卸载再清理缓存");
+            return;
+        }
+
+        var folder = EffectiveCacheDir;
+        var confirmed = await _dialogService.ShowConfirmationAsync(
+            "清理 rclone 缓存",
+            $"将删除缓存目录中的所有内容：\n{folder}\n\n此操作不会影响远端文件，确定继续吗？");
+        if (!confirmed)
+            return;
+
+        IsCacheBusy = true;
+        CacheSizeText = "正在清理缓存…";
+        try
+        {
+            var freed = await Task.Run(() => PathUtil.ClearDirectory(folder));
+            _notificationService.ShowSuccess($"缓存已清理，释放 {PathUtil.FormatSize(freed)}");
+        }
+        catch (Exception ex)
+        {
+            _notificationService.ShowError($"清理缓存失败: {ex.Message}");
+        }
+        finally
+        {
+            IsCacheBusy = false;
+            await RefreshCacheSizeAsync();
+        }
+    }
+
+    [RelayCommand]
+    private async Task RefreshCacheSizeAsync()
+    {
+        if (IsCacheBusy)
+            return;
+
+        IsCacheBusy = true;
+        var folder = EffectiveCacheDir;
+        CacheSizeText = "缓存占用：统计中…";
+        try
+        {
+            var size = await Task.Run(() => PathUtil.GetDirectorySize(folder));
+            CacheSizeText = $"缓存占用：{PathUtil.FormatSize(size)}";
+        }
+        catch
+        {
+            CacheSizeText = "缓存占用：无法统计";
+        }
+        finally
+        {
+            IsCacheBusy = false;
+        }
+    }
+
+    #endregion
+
+    #region 文件夹与配置
+
+    [RelayCommand]
+    private void OpenAppDataFolder()
+    {
+        OpenFolder(AppDataPath);
     }
 
     [RelayCommand]
     private void OpenAppLocationFolder()
     {
+        OpenFolder(AppLocation);
+    }
+
+    private void OpenFolder(string path)
+    {
         try
         {
-            if (Directory.Exists(AppLocation))
+            if (!Directory.Exists(path))
+                return;
+
+            Process.Start(new ProcessStartInfo
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = AppLocation,
-                    UseShellExecute = true
-                });
-            }
+                FileName = path,
+                UseShellExecute = true
+            });
         }
         catch (Exception ex)
         {
@@ -340,9 +558,10 @@ public partial class SettingsPageViewModel : ObservableObject
                 return;
             }
 
-            // 导入配置（跳过已存在的名称）
+            // 导入配置（跳过已存在的名称，单条失败不影响其他配置）
             var imported = 0;
             var skipped = 0;
+            var failed = 0;
             foreach (var config in configs)
             {
                 if (_mountService.Mounts.Any(m => m.Name == config.Name))
@@ -351,16 +570,28 @@ public partial class SettingsPageViewModel : ObservableObject
                     continue;
                 }
 
-                var mount = MountInfo.FromConfig(config);
-                _mountService.AddMount(mount);
-                imported++;
+                try
+                {
+                    var mount = MountInfo.FromConfig(config);
+                    _mountService.AddMount(mount);
+                    imported++;
+                }
+                catch
+                {
+                    failed++;
+                }
             }
 
-            _notificationService.ShowSuccess($"从 {fileName} 导入完成: 新增 {imported} 个，跳过 {skipped} 个已存在");
+            var summary = $"从 {fileName} 导入完成: 新增 {imported} 个，跳过 {skipped} 个已存在";
+            if (failed > 0)
+                summary += $"，{failed} 个配置无效";
+            _notificationService.ShowSuccess(summary);
         }
         catch (Exception ex)
         {
             _notificationService.ShowError($"导入失败: {ex.Message}");
         }
     }
+
+    #endregion
 }

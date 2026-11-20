@@ -24,6 +24,9 @@ public partial class SystemDependency : ObservableObject
     private string _description = "";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsInstalled))]
+    [NotifyPropertyChangedFor(nameof(NeedsInstallation))]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
     private DependencyStatus _status = DependencyStatus.Unknown;
 
     [ObservableProperty]
@@ -34,4 +37,14 @@ public partial class SystemDependency : ObservableObject
 
     public bool IsInstalled => Status == DependencyStatus.Installed;
     public bool NeedsInstallation => Status == DependencyStatus.NotInstalled;
+
+    /// <summary>
+    /// 状态显示文本
+    /// </summary>
+    public string StatusText => Status switch
+    {
+        DependencyStatus.Installed => "已安装",
+        DependencyStatus.NotInstalled => "未安装",
+        _ => "未知"
+    };
 }

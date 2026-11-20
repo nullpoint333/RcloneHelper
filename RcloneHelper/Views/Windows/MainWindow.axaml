@@ -1,23 +1,22 @@
 <Window xmlns="https://github.com/avaloniaui"
-         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-         xmlns:vm="using:RcloneHelper.Core.Windows"
-         xmlns:vmPages="using:RcloneHelper.Core.Pages"
-         xmlns:views="using:RcloneHelper.Views.Windows"
-         xmlns:pages="using:RcloneHelper.Views.Pages"
-         xmlns:models="using:RcloneHelper.Core.Models"
-         xmlns:converters="using:RcloneHelper.Converters"
-         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-         
-         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
-         x:Class="RcloneHelper.Views.Windows.MainWindow"
-         x:DataType="vm:MainWindowViewModel"
-         Title="Rclone Helper"
-         Width="1000" Height="700"
-          WindowStartupLocation="CenterScreen"
-          WindowDecorations="None"
-          ExtendClientAreaToDecorationsHint="True"
-         Background="{DynamicResource BackgroundBrush}">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RcloneHelper.Core.Windows"
+        xmlns:vmPages="using:RcloneHelper.Core.Pages"
+        xmlns:pages="using:RcloneHelper.Views.Pages"
+        xmlns:models="using:RcloneHelper.Core.Models"
+        xmlns:converters="using:RcloneHelper.Converters"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+        x:Class="RcloneHelper.Views.Windows.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Rclone Helper"
+        Width="1040" Height="720"
+        MinWidth="900" MinHeight="620"
+        WindowStartupLocation="CenterScreen"
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        Background="{DynamicResource BackgroundBrush}">
 
     <Window.Resources>
         <converters:ToastTypeToBrushConverter x:Key="ToastTypeToBrushConverter" />
@@ -37,38 +36,42 @@
     </Window.DataTemplates>
 
     <Window.Styles>
+        <!-- 侧边导航 -->
         <Style Selector="Button.navButton">
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="15,12" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="3,0,0,0" />
+            <Setter Property="Foreground" Value="{DynamicResource ForegroundSecondaryBrush}" />
+            <Setter Property="Padding" Value="15,11" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="CornerRadius" Value="0" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.navButton:pointerover">
             <Setter Property="Background" Value="{DynamicResource NavBarItemHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
         </Style>
         <Style Selector="Button.navButton.selected">
             <Setter Property="Background" Value="{DynamicResource NavBarItemSelectedBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
         </Style>
-        <Style Selector="TextBlock.navIcon">
-            <Setter Property="FontSize" Value="16" />
-            <Setter Property="Margin" Value="0,0,10,0" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-        <Style Selector="TextBlock.navText">
-            <Setter Property="FontSize" Value="14" />
-            <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
-            <Setter Property="VerticalAlignment" Value="Center" />
+        <Style Selector="Button.navButton.selected:pointerover">
+            <Setter Property="Background" Value="{DynamicResource NavBarItemSelectedBrush}" />
         </Style>
 
-        <!-- Title bar button styles -->
+        <!-- 标题栏按钮 -->
         <Style Selector="Button.titleBarButton">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Width" Value="46" />
-            <Setter Property="Height" Value="32" />
+            <Setter Property="Width" Value="44" />
+            <Setter Property="Height" Value="34" />
             <Setter Property="Foreground" Value="{DynamicResource TitleBarForegroundBrush}" />
             <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
@@ -78,20 +81,20 @@
         </Style>
         <Style Selector="Button.titleBarButton.close:pointerover">
             <Setter Property="Background" Value="{DynamicResource ErrorBrush}" />
-            <Setter Property="Foreground" Value="{DynamicResource ForegroundBrush}" />
+            <Setter Property="Foreground" Value="White" />
         </Style>
 
-        <!-- Toast styles -->
+        <!-- Toast -->
         <Style Selector="Border.toastItem">
             <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="15,10" />
-            <Setter Property="BoxShadow" Value="0 4 12 0 #40000000" />
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="BoxShadow" Value="0 6 18 0 #50000000" />
             <Setter Property="Margin" Value="0,0,0,8" />
-            <Setter Property="MinWidth" Value="200" />
-            <Setter Property="MaxWidth" Value="400" />
+            <Setter Property="MinWidth" Value="220" />
+            <Setter Property="MaxWidth" Value="380" />
         </Style>
         <Style Selector="TextBlock.toastMessage">
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Foreground" Value="White" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="FontWeight" Value="Medium" />
@@ -99,105 +102,130 @@
         <Style Selector="TextBlock.toastTime">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Foreground" Value="White" />
-            <Setter Property="Opacity" Value="0.8" />
+            <Setter Property="Opacity" Value="0.75" />
             <Setter Property="Margin" Value="0,4,0,0" />
         </Style>
     </Window.Styles>
 
-    <!-- 包装层：用于对话框覆盖整个窗口 -->
     <Grid>
-        <Grid ColumnDefinitions="200,*">
-            <!-- 左侧导航栏 - 占满整个高度 -->
-            <Border Grid.Column="0" Background="{DynamicResource NavBarBackgroundBrush}">
-                <Grid RowDefinitions="Auto,*">
-                    <!-- Logo/标题区 -->
-                    <Border Grid.Row="0" Background="{DynamicResource SurfaceHighBrush}" Padding="15">
-                        <StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="Rclone Helper" FontSize="18" FontWeight="Bold" 
+        <Grid ColumnDefinitions="212,*">
+            <!-- 左侧导航栏 -->
+            <Border Grid.Column="0" Background="{DynamicResource NavBarBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <!-- Logo -->
+                    <StackPanel Grid.Row="0" Margin="18,20,18,14" Spacing="10" Orientation="Horizontal">
+                        <Border Width="34" Height="34" CornerRadius="9" Background="{DynamicResource AccentSubtleBrush}">
+                            <Path Width="19" Height="19" Stretch="Uniform"
+                                  Fill="{DynamicResource AccentBrush}"
+                                  Data="{DynamicResource IconCloud}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="Rclone Helper" FontSize="15" FontWeight="Bold"
                                            Foreground="{DynamicResource ForegroundBrush}" />
-                                <TextBlock Text="{Binding AppVersion}" FontSize="11" 
-                                           Foreground="{DynamicResource ForegroundDisabledBrush}"
+                                <TextBlock Text="{Binding AppVersion}" FontSize="10"
+                                           Foreground="{DynamicResource ForegroundMutedBrush}"
                                            VerticalAlignment="Center" Margin="0,2,0,0" />
                             </StackPanel>
-                            <TextBlock Text="网络存储挂载管理" FontSize="11" 
-                                       Foreground="{DynamicResource ForegroundMutedBrush}" Margin="0,3,0,0" />
+                            <TextBlock Text="网络存储挂载管理" FontSize="11"
+                                       Foreground="{DynamicResource ForegroundMutedBrush}" />
                         </StackPanel>
-                    </Border>
+                    </StackPanel>
 
-                    <!-- 导航菜单 -->
-                    <StackPanel Grid.Row="1" Margin="0,10,0,0">
-                        <!-- 主页 -->
-                        <Button Classes="navButton" Classes.selected="{Binding IsHomeSelected}" Command="{Binding NavigateHomeCommand}">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🏠" Classes="navIcon" />
-                                <TextBlock Text="主页" Classes="navText" />
+                    <!-- 导航 -->
+                    <StackPanel Grid.Row="1" Margin="0,6,0,0">
+                        <Button Classes="navButton" Classes.selected="{Binding IsHomeSelected}"
+                                Command="{Binding NavigateHomeCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="11">
+                                <Path Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center"
+                                      Fill="{Binding $parent[Button].Foreground}"
+                                      Data="{DynamicResource IconHome}" />
+                                <TextBlock Text="挂载管理" FontSize="13" VerticalAlignment="Center"
+                                           Foreground="{Binding $parent[Button].Foreground}" />
                             </StackPanel>
                         </Button>
 
-                        <!-- Rclone管理 -->
-                        <Button Classes="navButton" Classes.selected="{Binding IsRcloneSelected}" Command="{Binding NavigateRcloneCommand}">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="⚙️" Classes="navIcon" />
-                                <TextBlock Text="Rclone管理" Classes="navText" />
+                        <Button Classes="navButton" Classes.selected="{Binding IsRcloneSelected}"
+                                Command="{Binding NavigateRcloneCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="11">
+                                <Path Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center"
+                                      Fill="{Binding $parent[Button].Foreground}"
+                                      Data="{DynamicResource IconServer}" />
+                                <TextBlock Text="Rclone 管理" FontSize="13" VerticalAlignment="Center"
+                                           Foreground="{Binding $parent[Button].Foreground}" />
                             </StackPanel>
                         </Button>
+                    </StackPanel>
 
-                        <!-- 配置 -->
-                        <Button Classes="navButton" Classes.selected="{Binding IsSettingsSelected}" Command="{Binding NavigateSettingsCommand}">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="🔧" Classes="navIcon" />
-                                <TextBlock Text="配置" Classes="navText" />
+                    <!-- 设置固定在左下角 -->
+                    <StackPanel Grid.Row="2" Margin="0,0,0,10">
+                        <Button Classes="navButton" Classes.selected="{Binding IsSettingsSelected}"
+                                Command="{Binding NavigateSettingsCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="11">
+                                <Path Width="16" Height="16" Stretch="Uniform" VerticalAlignment="Center"
+                                      Fill="{Binding $parent[Button].Foreground}"
+                                      Data="{DynamicResource IconSettings}" />
+                                <TextBlock Text="设置" FontSize="13" VerticalAlignment="Center"
+                                           Foreground="{Binding $parent[Button].Foreground}" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- 右侧区域 -->
-            <Grid Grid.Column="1" RowDefinitions="Auto,*">
-                <!-- 标题栏（窗口控制按钮） -->
-                <Border Grid.Row="0" Background="{DynamicResource TitleBarBackgroundBrush}" Height="32"
+            <!-- 右侧：标题栏 + 内容 -->
+            <Grid Grid.Column="1" RowDefinitions="34,*">
+                <Border Grid.Row="0" Background="{DynamicResource TitleBarBackgroundBrush}"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
                         PointerPressed="TitleBar_PointerPressed">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                        <!-- Theme Toggle -->
-                        <Button Classes="titleBarButton" Command="{Binding ToggleThemeCommand}" ToolTip.Tip="切换主题">
-                            <Viewbox Width="14" Height="14">
-                                <Path x:Name="ThemeIcon" Fill="{DynamicResource TitleBarForegroundBrush}" Data="{DynamicResource IconSun}" />
-                            </Viewbox>
-                        </Button>
-                        <!-- Minimize -->
-                        <Button Classes="titleBarButton" Click="MinimizeButton_Click">
-                            <Viewbox Width="12" Height="12">
-                                <Path Fill="{DynamicResource TitleBarForegroundBrush}" Data="{DynamicResource IconMinimize}" />
-                            </Viewbox>
-                        </Button>
-                        <!-- Maximize/Restore -->
-                        <Button Classes="titleBarButton" Click="MaximizeButton_Click">
-                            <Viewbox x:Name="MaximizeIcon" Width="12" Height="12">
-                                <Path Fill="{DynamicResource TitleBarForegroundBrush}" Data="{DynamicResource IconMaximize}" />
-                            </Viewbox>
-                        </Button>
-                        <!-- Close -->
-                        <Button Classes="titleBarButton close" Click="CloseButton_Click">
-                            <Viewbox Width="10" Height="10">
-                                <Path Fill="{DynamicResource TitleBarForegroundBrush}" Data="{DynamicResource IconClose}" />
-                            </Viewbox>
-                        </Button>
-                    </StackPanel>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="{Binding PageTitle}" FontSize="12"
+                                   Foreground="{DynamicResource ForegroundMutedBrush}"
+                                   VerticalAlignment="Center" Margin="18,0,0,0" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Classes="titleBarButton" Command="{Binding ToggleThemeCommand}" ToolTip.Tip="切换深色/浅色主题">
+                                <Viewbox Width="14" Height="14">
+                                    <Path x:Name="ThemeIcon" Fill="{DynamicResource TitleBarForegroundBrush}"
+                                          Data="{DynamicResource IconSun}" />
+                                </Viewbox>
+                            </Button>
+                            <Button Classes="titleBarButton" Click="MinimizeButton_Click" ToolTip.Tip="最小化">
+                                <Viewbox Width="12" Height="12">
+                                    <Path Fill="{DynamicResource TitleBarForegroundBrush}" Data="{DynamicResource IconMinimize}" />
+                                </Viewbox>
+                            </Button>
+                            <Button Classes="titleBarButton" Click="MaximizeButton_Click" ToolTip.Tip="最大化/还原">
+                                <Viewbox x:Name="MaximizeIcon" Width="12" Height="12">
+                                    <Path Fill="{DynamicResource TitleBarForegroundBrush}" Data="{DynamicResource IconMaximize}" />
+                                </Viewbox>
+                            </Button>
+                            <Button Classes="titleBarButton close" Click="CloseButton_Click" ToolTip.Tip="关闭到托盘">
+                                <Viewbox Width="10" Height="10">
+                                    <Path Fill="{DynamicResource TitleBarForegroundBrush}" Data="{DynamicResource IconClose}" />
+                                </Viewbox>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- 内容区 -->
                 <Border Grid.Row="1" Background="{DynamicResource ContentBackgroundBrush}">
                     <Grid>
                         <ContentControl Content="{Binding CurrentPage}" />
-                        
-                        <!-- Toast 容器 - 支持叠加显示 -->
+
+                        <!-- Toast 容器 -->
                         <ItemsControl ItemsSource="{Binding Toasts}"
                                       VerticalAlignment="Bottom"
-                                      HorizontalAlignment="Center"
-                                      Margin="0,0,0,20"
+                                      HorizontalAlignment="Right"
+                                      Margin="0,0,24,24"
                                       ZIndex="1000">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Vertical" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="models:ToastItem">
                                     <Border Classes="toastItem"
@@ -221,37 +249,30 @@
             </Grid>
         </Grid>
 
-        <!-- 对话框覆盖层 - 覆盖整个窗口 -->
+        <!-- 确认对话框覆盖层 -->
         <Border x:Name="DialogOverlay"
                 IsVisible="False"
                 ZIndex="2000"
-                Background="#80000000">
-            <Border Background="{DynamicResource CardBrush}"
-                    CornerRadius="8"
-                    Padding="20"
-                    MaxWidth="400"
-                    VerticalAlignment="Center"
-                    HorizontalAlignment="Center"
-                    BoxShadow="0 4 16 0 #60000000">
-                <Grid RowDefinitions="*,Auto">
+                Background="{DynamicResource OverlayBrush}">
+            <Border Classes="dialog" MaxWidth="400" VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <TextBlock Grid.Row="0" Text="请确认" Classes="cardTitle" Margin="0,0,0,10" />
                     <TextBlock x:Name="DialogMessage"
-                               Grid.Row="0"
+                               Grid.Row="1"
                                TextWrapping="Wrap"
                                VerticalAlignment="Center"
-                               HorizontalAlignment="Center"
-                               TextAlignment="Center"
-                               Foreground="{DynamicResource ForegroundBrush}" />
-                    <Grid Grid.Row="1" Margin="0,20,0,0" ColumnDefinitions="*,*">
+                               Foreground="{DynamicResource ForegroundSecondaryBrush}" />
+                    <Grid Grid.Row="2" Margin="0,20,0,0" ColumnDefinitions="*,*">
                         <Button x:Name="DialogConfirmButton"
                                 Grid.Column="0"
                                 Content="确认"
-                                HorizontalContentAlignment="Center"
+                                Classes="primary"
                                 HorizontalAlignment="Stretch" />
                         <Button x:Name="DialogCancelButton"
                                 Grid.Column="1"
                                 Content="取消"
+                                Classes="secondary"
                                 Margin="10,0,0,0"
-                                HorizontalContentAlignment="Center"
                                 HorizontalAlignment="Stretch" />
                     </Grid>
                 </Grid>

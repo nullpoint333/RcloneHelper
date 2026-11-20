@@ -122,6 +122,9 @@ public partial class MainWindow : Window
 
     private void InitializeTheme(MainWindowViewModel viewModel)
     {
+        // 启动时就把保存的主题真正应用上（之前只在切换时应用，
+        // 导致记住的浅色主题在下次启动时只对 FluentTheme 生效，自定义画刷仍是深色）
+        ThemeService.ApplyTheme(viewModel.IsDarkMode);
         UpdateThemeIcon(viewModel.IsDarkMode);
         viewModel.PropertyChanged += (_, e) =>
         {

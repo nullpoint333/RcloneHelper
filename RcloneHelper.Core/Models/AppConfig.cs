@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Linq;
+using RcloneHelper.Helpers;
 
 namespace RcloneHelper.Models;
 
@@ -79,10 +81,60 @@ public class AppConfig
 
     /// <summary>
     /// rclone 缓存目录（VFS 缓存）。
-    /// 为空表示使用默认位置（%APPDATA%\rclone\cache）。
+    /// 为空表示使用应用默认位置（%APPDATA%\rclone\cache，会显式通过 --cache-dir 传给 rclone）。
     /// 修改后需要重新挂载才能生效。
     /// </summary>
     public string CacheDir { get; set; } = "";
+
+    /// <summary>
+    /// rclone VFS 缓存大小上限（例如 10G / 500M）。
+    /// 为空表示不限制。修改后需要重新挂载才能生效。
+    /// </summary>
+    public string VfsCacheMaxSize { get; set; } = "";
+
+    /// <summary>
+    /// 校验 rclone 缓存上限格式是否合法（空字符串表示不限制）。
+    /// 支持 rclone 的写法：纯字节数，或带 B/K/M/G/T 后缀，以及 off。
+    /// </summary>
+    public static bool IsValidCacheSize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return true;
+
+        var text = value.Trim();
+        if (text.Equals("off", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!char.IsLetter(text[^1]))
+            return decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out var plain)
+                   && plain >= 0;
+
+        var suffix = char.ToUpperInvariant(text[^1]);
+        if (suffix is not ('B' or 'K' or 'M' or 'G' or 'T'))
+            return false;
+
+        var numberPart = text[..^1].Trim();
+        return decimal.TryParse(numberPart, NumberStyles.Number, CultureInfo.InvariantCulture, out var number)
+               && number > 0;
+    }
+
+    /// <summary>
+    /// 规范化缓存上限写法：去空格、统一大写后缀；空值保持为空（不限制）。
+    /// </summary>
+    public static string NormalizeCacheSize(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "";
+
+        var text = value.Trim();
+        if (text.Equals("off", StringComparison.OrdinalIgnoreCase))
+            return "off";
+
+        if (char.IsLetter(text[^1]))
+            return text[..^1].Trim() + char.ToUpperInvariant(text[^1]);
+
+        return text;
+    }
 
     /// <summary>
     /// 获取完整的代理 URL
@@ -99,12 +151,14 @@ public class AppConfig
             return "";
 
         // 支持代理认证：user[:password]@host:port
+        // 密码在 settings.json 中以 DPAPI 加密保存，这里先解密再拼 URL
         var auth = "";
         if (!string.IsNullOrWhiteSpace(ProxyUser))
         {
             auth = Uri.EscapeDataString(ProxyUser);
-            if (!string.IsNullOrWhiteSpace(ProxyPassword))
-                auth += ":" + Uri.EscapeDataString(ProxyPassword);
+            var proxyPassword = SecureStorageHelper.Decrypt(ProxyPassword);
+            if (!string.IsNullOrWhiteSpace(proxyPassword))
+                auth += ":" + Uri.EscapeDataString(proxyPassword);
             auth += "@";
         }
 

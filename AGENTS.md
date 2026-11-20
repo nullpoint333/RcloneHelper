@@ -32,12 +32,11 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 
 ```
 RcloneHelper/
-├── RcloneHelper/                    # Main UI project (Avalonia)
+├── RcloneHelper/                    # 主 UI 项目 (Avalonia)
 │   ├── Views/Pages/                # Page controls (HomePage, SettingsPage, etc.)
 │   ├── Views/Windows/              # MainWindow
-│   ├── Styles/                    # Avalonia styles
-│   ├── Themes/                     # Theme definitions (Theme.axaml)
-│   ├── Services/                   # UI-specific services (DialogService)
+│   ├── Styles/                    # Controls.axaml（共享控件样式）, Icons.axaml（矢量图标资源）
+│   ├── Services/                   # UI-specific services (DialogService, ThemeService)
 │   └── App.axaml.cs               # DI container setup
 │
 ├── RcloneHelper.Core/              # Core logic (platform-agnostic)
@@ -52,6 +51,9 @@ RcloneHelper/
 │
 └── RcloneHelper.Tests/             # xUnit tests with Moq
 ```
+
+> 主题颜色定义在 `RcloneHelper/App.axaml` 的 `ThemeDictionaries`（Default=深色 / Light=浅色），
+> 页面里统一使用 `{DynamicResource XxxBrush}`，不要再在代码里维护颜色表。
 
 ## Architecture
 
@@ -182,24 +184,27 @@ throw new InvalidOperationException($"挂载错误: {ex.Message}", ex);
 ### Avalonia XAML
 
 ```xml
-<!-- Compiled bindings with x:DataType -->
+<!-- 编译期绑定：项目默认 AvaloniaUseCompiledBindingsByDefault=true -->
 <UserControl x:Class="RcloneHelper.Views.Pages.HomePage"
               xmlns:vm="using:RcloneHelper.Core.Pages"
+              xmlns:models="using:RcloneHelper.Models"
               x:DataType="vm:HomePageViewModel">
+
+<!-- DataTemplate 必须声明 x:DataType 才能使用编译期绑定 -->
+<DataTemplate x:DataType="models:MountInfo">
+    <Button Command="{Binding $parent[UserControl].((vm:HomePageViewModel)DataContext).EditItemCommand}"
+            CommandParameter="{Binding}" />
+</DataTemplate>
 
 <!-- Dynamic resources for theming -->
 <Border Background="{DynamicResource SurfaceBrush}"/>
 <TextBlock Foreground="{DynamicResource ForegroundBrush}"/>
 
 <!-- Visibility: ! prefix for negation -->
-<TextBox IsVisible="{Binding !EditingMount.IsWebDavType}"/>
+<TextBox IsReadOnly="{Binding IsViewMode}"/>
 
 <!-- Commands use generated names -->
 <Button Command="{Binding AddMountCommand}"/>
-
-<!-- Relative bindings in DataTemplate -->
-<Button Command="{Binding $parent[UserControl].DataContext.EditItemCommand}"
-        CommandParameter="{Binding}"/>
 ```
 
 ### Cross-Platform Services

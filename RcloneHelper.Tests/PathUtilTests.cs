@@ -115,4 +115,121 @@ public class PathUtilTests
             Directory.Delete(tempDir, true);
         }
     }
+
+    [Fact]
+    public void GetEffectiveCacheDir_ShouldFallbackToDefaultWhenEmpty()
+    {
+        Assert.Equal(PathUtil.RcloneCacheDir, PathUtil.GetEffectiveCacheDir(null));
+        Assert.Equal(PathUtil.RcloneCacheDir, PathUtil.GetEffectiveCacheDir(""));
+        Assert.Equal(PathUtil.RcloneCacheDir, PathUtil.GetEffectiveCacheDir("   "));
+    }
+
+    [Fact]
+    public void GetEffectiveCacheDir_ShouldTrimCustomDir()
+    {
+        Assert.Equal(@"D:\rclone-cache", PathUtil.GetEffectiveCacheDir(@"  D:\rclone-cache  "));
+    }
+
+    [Fact]
+    public void NormalizeDir_ShouldRemoveTrailingSeparator()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "rclonehelper-normalize-test");
+
+        var normalized = PathUtil.NormalizeDir(dir + Path.DirectorySeparatorChar);
+
+        Assert.Equal(Path.TrimEndingDirectorySeparator(dir), normalized);
+    }
+
+    [Fact]
+    public void NormalizeDir_ShouldReturnEmptyForBlankInput()
+    {
+        Assert.Equal("", PathUtil.NormalizeDir(null));
+        Assert.Equal("", PathUtil.NormalizeDir("  "));
+    }
+
+    [Theory]
+    [InlineData(0, "0 B")]
+    [InlineData(512, "512 B")]
+    [InlineData(1023, "1023 B")]
+    [InlineData(1024, "1 KB")]
+    [InlineData(1536, "1.5 KB")]
+    [InlineData(1048576, "1 MB")]
+    [InlineData(1073741824, "1 GB")]
+    public void FormatSize_ShouldFormatReadable(long bytes, string expected)
+    {
+        Assert.Equal(expected, PathUtil.FormatSize(bytes));
+    }
+
+    [Fact]
+    public void GetDirectorySize_And_ClearDirectory_ShouldWork()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var subDir = Path.Combine(tempDir, "vfs");
+        Directory.CreateDirectory(subDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(tempDir, "a.bin"), new byte[100]);
+            File.WriteAllBytes(Path.Combine(subDir, "b.bin"), new byte[200]);
+
+            Assert.Equal(300, PathUtil.GetDirectorySize(tempDir));
+
+            var freed = PathUtil.ClearDirectory(tempDir);
+
+            Assert.Equal(300, freed);
+            Assert.True(Directory.Exists(tempDir));
+            Assert.Empty(Directory.GetFileSystemEntries(tempDir));
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void GetDirectorySize_ShouldReturnZeroForMissingDirectory()
+    {
+        Assert.Equal(0, PathUtil.GetDirectorySize(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString())));
+        Assert.Equal(0, PathUtil.GetDirectorySize(null));
+    }
+
+    [Fact]
+    public void GetVfsCacheDir_ShouldComposeRemoteScopedPath()
+    {
+        var cacheDir = Path.Combine(Path.GetTempPath(), "rh-cache");
+
+        Assert.Equal(Path.Combine(cacheDir, "vfs", "nas"), PathUtil.GetVfsCacheDir(cacheDir, "nas"));
+        Assert.Equal(Path.Combine(cacheDir, "vfsMeta", "nas"), PathUtil.GetVfsMetaDir(cacheDir, "nas"));
+    }
+
+    [Fact]
+    public void GetDirectoryStats_ShouldCountFilesAndBytes()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        var subDir = Path.Combine(tempDir, "sub");
+        Directory.CreateDirectory(subDir);
+        try
+        {
+            File.WriteAllBytes(Path.Combine(tempDir, "a.bin"), new byte[10]);
+            File.WriteAllBytes(Path.Combine(subDir, "b.bin"), new byte[20]);
+
+            var (files, bytes) = PathUtil.GetDirectoryStats(tempDir);
+
+            Assert.Equal(2, files);
+            Assert.Equal(30, bytes);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [Fact]
+    public void GetDirectoryStats_ShouldReturnZeroForMissingDirectory()
+    {
+        var (files, bytes) = PathUtil.GetDirectoryStats(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
+
+        Assert.Equal(0, files);
+        Assert.Equal(0, bytes);
+    }
 }

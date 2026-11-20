@@ -207,4 +207,153 @@ public class MountInfoTests
         Assert.True(s3.IsS3Type);
         Assert.False(webdav.IsS3Type);
     }
+
+    [Fact]
+    public void TypeLabel_ShouldReturnFriendlyName()
+    {
+        Assert.Equal("WebDAV", new MountInfo { Type = "webdav" }.TypeLabel);
+        Assert.Equal("FTP", new MountInfo { Type = "ftp" }.TypeLabel);
+        Assert.Equal("SFTP", new MountInfo { Type = "sftp" }.TypeLabel);
+        Assert.Equal("S3", new MountInfo { Type = "s3" }.TypeLabel);
+        Assert.Equal("UNKNOWN", new MountInfo { Type = "unknown" }.TypeLabel);
+    }
+
+    [Fact]
+    public void Validate_WebDavWithoutHost_ShouldFail()
+    {
+        var mount = new MountInfo { Name = "test", Type = "webdav" };
+
+        Assert.Equal("请输入主机地址", mount.Validate());
+    }
+
+    [Fact]
+    public void Validate_ValidWebDav_ShouldPass()
+    {
+        var mount = new MountInfo
+        {
+            Name = "test",
+            Type = "webdav",
+            Host = "example.com",
+            Port = 443,
+            LocalDrive = "Z:"
+        };
+
+        Assert.Null(mount.Validate());
+    }
+
+    [Fact]
+    public void Validate_S3_ShouldRequireBucketAndKeys()
+    {
+        var mount = new MountInfo { Name = "test", Type = "s3", LocalDrive = "Z:" };
+        Assert.Equal("请输入 Access Key ID", mount.Validate());
+
+        mount.AccessKeyId = "ak";
+        Assert.Equal("请输入 Secret Access Key", mount.Validate());
+
+        mount.SecretAccessKey = "sk";
+        Assert.Equal("请输入 Bucket 名称", mount.Validate());
+
+        mount.RemotePath = "bucket";
+        Assert.Null(mount.Validate());
+    }
+
+    [Fact]
+    public void Validate_MissingNameOrDrive_ShouldFail()
+    {
+        var mount = new MountInfo { Type = "webdav", Host = "example.com", LocalDrive = "Z:" };
+        Assert.Equal("请输入名称", mount.Validate());
+
+        mount.Name = "test";
+        mount.LocalDrive = "";
+        Assert.Equal("请选择挂载点", mount.Validate());
+    }
+
+    [Fact]
+    public void EnsureUrlPartsFromUrl_ShouldParseLegacyWebDavUrl()
+    {
+        var mount = new MountInfo
+        {
+            Type = "webdav",
+            Url = "https://example.com:8443/dav/files"
+        };
+
+        mount.EnsureUrlPartsFromUrl();
+
+        Assert.True(mount.UseHttps);
+        Assert.Equal("example.com", mount.Host);
+        Assert.Equal(8443, mount.Port);
+        Assert.Equal("dav/files", mount.Path);
+    }
+
+    [Fact]
+    public void EnsureUrlPartsFromUrl_ShouldKeepExistingHost()
+    {
+        var mount = new MountInfo
+        {
+            Type = "webdav",
+            Host = "keep.example.com",
+            Url = "https://example.com/dav"
+        };
+
+        mount.EnsureUrlPartsFromUrl();
+
+        Assert.Equal("keep.example.com", mount.Host);
+    }
+
+    [Fact]
+    public void EnsureUrlPartsFromUrl_ShouldParseFtpUrl()
+    {
+        var mount = new MountInfo
+        {
+            Type = "ftp",
+            Url = "ftp://ftp.example.com/pub"
+        };
+
+        mount.EnsureUrlPartsFromUrl();
+
+        Assert.Equal("ftp.example.com", mount.Host);
+        Assert.Equal(21, mount.Port);
+        Assert.Equal("pub", mount.Path);
+    }
+
+    [Fact]
+    public void FromConfig_ShouldParseLegacyUrlIntoParts()
+    {
+        var config = new MountConfig
+        {
+            Name = "legacy",
+            Type = "webdav",
+            Url = "http://legacy.example.com:8080/dav"
+        };
+
+        var info = MountInfo.FromConfig(config);
+
+        Assert.Equal("legacy.example.com", info.Host);
+        Assert.Equal(8080, info.Port);
+        Assert.Equal("dav", info.Path);
+        Assert.False(info.UseHttps);
+        Assert.Null(info.Validate());
+    }
+
+    [Fact]
+    public void PendingUploadText_ShouldDescribeFilesAndSize()
+    {
+        var mount = new MountInfo
+        {
+            PendingUploadFiles = 2,
+            PendingUploadBytes = 3L * 1024 * 1024
+        };
+
+        Assert.True(mount.HasPendingUploads);
+        Assert.Equal("2 个文件 · 3 MB", mount.PendingUploadText);
+    }
+
+    [Fact]
+    public void PendingUploadText_ShouldBeEmptyWithoutUploads()
+    {
+        var mount = new MountInfo();
+
+        Assert.False(mount.HasPendingUploads);
+        Assert.Equal("", mount.PendingUploadText);
+    }
 }

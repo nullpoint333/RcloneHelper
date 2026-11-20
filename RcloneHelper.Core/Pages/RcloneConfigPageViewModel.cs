@@ -6,8 +6,8 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using RcloneHelper.Helpers;
 using RcloneHelper.Models;
 using RcloneHelper.Services;
@@ -19,7 +19,6 @@ public partial class RcloneConfigPageViewModel : ObservableObject
 {
     private readonly ISystemService _systemService;
     private readonly INotificationService _notificationService;
-    private readonly IConfigService _configService;
     private readonly MountService _mountService;
     private readonly IDialogService _dialogService;
 
@@ -30,10 +29,16 @@ public partial class RcloneConfigPageViewModel : ObservableObject
     private string _configFilePath = "正在获取...";
 
     [ObservableProperty]
-    private string _cacheDir = "正在获取...";
+    private string _rclonePath = "";
 
     /// <summary>
-    /// 默认缓存目录（用于“恢复默认”提示）
+    /// 实际生效的 rclone 缓存目录（只读展示，修改请到「设置」页）
+    /// </summary>
+    [ObservableProperty]
+    private string _cacheDir = "";
+
+    /// <summary>
+    /// 默认缓存目录（用于提示）
     /// </summary>
     public string DefaultCacheDir => PathUtil.DefaultRcloneCacheDir;
 
@@ -55,20 +60,35 @@ public partial class RcloneConfigPageViewModel : ObservableObject
     public RcloneConfigPageViewModel(
         ISystemService systemService,
         INotificationService notificationService,
-        IConfigService configService,
         MountService mountService,
         IDialogService dialogService)
     {
         _systemService = systemService;
         _notificationService = notificationService;
-        _configService = configService;
         _mountService = mountService;
         _dialogService = dialogService;
 
         // 构造时只做零成本的赋值，重活（进程/磁盘探测、读配置文件）
-        // 延迟到页面显示时的 RefreshConfigAsync，且放在后台线程执行
+        // 延迟到页面显示时的 ActivateAsync，且放在后台线程执行
         ConfigFilePath = PathUtil.RcloneConfigPath;
-        CacheDir = PathUtil.GetEffectiveCacheDir(_configService.Current.CacheDir);
+        CacheDir = _mountService.EffectiveCacheDir;
+    }
+
+    /// <summary>
+    /// 页面显示时调用（依赖探测 + remote 列表都在后台线程执行）
+    /// </summary>
+    public async Task ActivateAsync()
+    {
+        try
+        {
+            CacheDir = _mountService.EffectiveCacheDir;
+            await UpdateDependenciesAsync();
+            await RefreshRemotesAsync();
+        }
+        catch (Exception ex)
+        {
+            _notificationService.ShowError($"刷新 rclone 信息失败: {ex.Message}");
+        }
     }
 
     /// <summary>
@@ -174,119 +194,41 @@ public partial class RcloneConfigPageViewModel : ObservableObject
     [RelayCommand]
     private void OpenConfigFolder()
     {
-        try
-        {
-            var folder = Path.GetDirectoryName(ConfigFilePath);
-            if (folder != null && Directory.Exists(folder))
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = folder,
-                    UseShellExecute = true
-                });
-            }
-        }
-        catch { }
+        var folder = Path.GetDirectoryName(ConfigFilePath);
+        if (folder != null && Directory.Exists(folder))
+            OpenFolder(folder);
     }
 
+    /// <summary>
+    /// 打开当前生效的缓存目录（缓存位置在「设置」页修改）
+    /// </summary>
     [RelayCommand]
     private void OpenCacheFolder()
     {
-        var folder = string.IsNullOrWhiteSpace(CacheDir)
-            ? PathUtil.GetEffectiveCacheDir(_configService.Current.CacheDir)
-            : CacheDir;
-        if (!Directory.Exists(folder))
-        {
-            try
-            {
-                Directory.CreateDirectory(folder);
-            }
-            catch (Exception ex)
-            {
-                _notificationService.ShowError($"缓存目录不可用: {ex.Message}");
-                return;
-            }
-        }
+        var folder = _mountService.EffectiveCacheDir;
         try
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = folder,
-                UseShellExecute = true
-            });
-        }
-        catch { }
-    }
-
-    [RelayCommand]
-    private async Task BrowseCacheDirAsync()
-    {
-        var picked = await _dialogService.ShowOpenFolderPickerAsync("选择 rclone 缓存目录", CacheDir);
-        if (!string.IsNullOrWhiteSpace(picked))
-        {
-            CacheDir = picked;
-        }
-    }
-
-    [RelayCommand]
-    private void SaveCacheDir()
-    {
-        var dir = (CacheDir ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(dir))
-        {
-            _notificationService.ShowError("缓存目录不能为空，为空请使用“恢复默认”");
-            return;
-        }
-
-        try
-        {
-            Directory.CreateDirectory(dir);
+            Directory.CreateDirectory(folder);
         }
         catch (Exception ex)
         {
-            _notificationService.ShowError($"无法创建缓存目录: {ex.Message}");
+            _notificationService.ShowError($"缓存目录不可用: {ex.Message}");
             return;
         }
 
-        _configService.Update(c => c.CacheDir = dir);
-        CacheDir = dir;
-        _notificationService.ShowSuccess("缓存目录已保存，重新挂载后生效");
-    }
-
-    [RelayCommand]
-    private void ResetCacheDir()
-    {
-        _configService.Update(c => c.CacheDir = "");
-        CacheDir = PathUtil.DefaultRcloneCacheDir;
-        try
-        {
-            Directory.CreateDirectory(CacheDir);
-        }
-        catch { }
-        _notificationService.ShowSuccess("已恢复默认缓存目录，重新挂载后生效");
+        OpenFolder(folder);
     }
 
     [RelayCommand]
     private void CheckUpdate()
     {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "https://rclone.org/downloads/",
-                UseShellExecute = true
-            });
-        }
-        catch { }
+        OpenUrl("https://rclone.org/downloads/");
     }
 
     [RelayCommand]
     private async Task RefreshConfig()
     {
-        CacheDir = PathUtil.GetEffectiveCacheDir(_configService.Current.CacheDir);
-
-        await UpdateDependenciesAsync();
-        await RefreshRemotesAsync();
+        await ActivateAsync();
     }
 
     [RelayCommand]
@@ -297,30 +239,41 @@ public partial class RcloneConfigPageViewModel : ObservableObject
 
         var remoteName = SelectedRemote.Name;
 
+        // 如果这个 remote 同时也是应用管理的挂载，走 MountService 删除，
+        // 才能同时清掉 mounts.json，避免下次挂载又把配置写回来
+        var managed = _mountService.GetMount(remoteName);
+        var message = managed != null
+            ? $"「{remoteName}」是当前管理的挂载，删除会同时移除应用中的连接配置。确定删除吗？"
+            : $"确定从 rclone 配置中删除「{remoteName}」吗？此操作不可撤销。";
+
+        if (!await _dialogService.ShowConfirmationAsync("删除 Remote", message))
+            return;
+
         try
         {
-            // 执行外部进程放后台，避免 WaitForExit 卡住 UI
-            await Task.Run(() =>
+            if (managed != null)
             {
-                var process = new Process
+                _mountService.DeleteMount(remoteName);
+                _notificationService.ShowSuccess($"已删除 {remoteName}");
+            }
+            else
+            {
+                // 执行外部进程放后台，避免 WaitForExit 卡住 UI
+                var exitCode = await Task.Run(() => RunRclone($"config delete {Quote(remoteName)}", 5000));
+                if (exitCode == 0)
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = RcloneLocator.GetRclonePath(),
-                        Arguments = $"config delete \"{remoteName}\"",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-                process.WaitForExit(5000);
-            });
+                    _notificationService.ShowSuccess($"已从 rclone 配置中删除 {remoteName}");
+                }
+                else
+                {
+                    _notificationService.ShowError($"删除失败：rclone 返回 {exitCode}");
+                }
+            }
         }
-        catch
+        catch (Exception ex)
         {
+            _notificationService.ShowError($"删除失败: {ex.Message}");
+            return;
         }
 
         SelectedRemote = null;
@@ -333,66 +286,38 @@ public partial class RcloneConfigPageViewModel : ObservableObject
         if (SelectedRemote == null || !SelectedRemote.IsMounted)
             return;
 
-        if (string.IsNullOrWhiteSpace(SelectedRemote.LocalDrive))
-        {
-            _notificationService.ShowError("卸载失败: 挂载点信息无效，请刷新后重试");
-            return;
-        }
-
         var remoteName = SelectedRemote.Name;
         var localDrive = SelectedRemote.LocalDrive;
 
         try
         {
-            var rclonePath = RcloneLocator.GetRclonePath();
-            if (string.IsNullOrEmpty(rclonePath))
+            // 优先让 MountService 处理（会同时终止进程并清理 WinFsp 残留）
+            var managed = _mountService.GetMount(remoteName);
+            if (managed is { IsMounted: true })
             {
-                _notificationService.ShowError("卸载失败: 未找到 rclone");
+                await _mountService.UnmountAsync(managed.Name);
+                _notificationService.ShowSuccess($"已卸载 {remoteName}");
+                await RefreshRemotesAsync();
                 return;
             }
 
-            // 执行外部进程放后台，避免 WaitForExit 卡住 UI
-            var result = await Task.Run(() =>
+            if (string.IsNullOrWhiteSpace(localDrive))
             {
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = rclonePath,
-                        Arguments = $"umount {localDrive}",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-
-                process.Start();
-                var exited = process.WaitForExit(5000);
-
-                if (!exited)
-                {
-                    try { process.Kill(); } catch { }
-                    return (Exited: false, ExitCode: -1);
-                }
-
-                return (Exited: true, ExitCode: process.ExitCode);
-            });
-
-            if (!result.Exited)
-            {
-                _notificationService.ShowError("卸载超时（5秒），请稍后重试或手动卸载");
+                _notificationService.ShowError("卸载失败: 挂载点信息无效，请刷新后重试");
                 return;
             }
 
-            if (result.ExitCode != 0)
+            // 外部挂载：退回 rclone umount
+            var exitCode = await Task.Run(() => RunRclone($"umount {Quote(localDrive)}", 5000));
+            if (exitCode == 0)
             {
-                _notificationService.ShowError($"卸载失败: rclone umount 返回 {result.ExitCode}");
-                return;
+                _notificationService.ShowSuccess($"已卸载 {remoteName}");
+                await RefreshRemotesAsync();
             }
-
-            _notificationService.ShowSuccess($"已卸载 {remoteName}");
-            await RefreshRemotesAsync();
+            else
+            {
+                _notificationService.ShowError($"卸载失败: rclone umount 返回 {exitCode}");
+            }
         }
         catch (Exception ex)
         {
@@ -407,46 +332,33 @@ public partial class RcloneConfigPageViewModel : ObservableObject
     /// </summary>
     private async Task UpdateDependenciesAsync()
     {
-        var (fuse, rclone, version) = await Task.Run(() =>
+        var (fuse, rclone, version, path) = await Task.Run(() =>
         {
             var fuseDep = _systemService.GetFuseDependency();
             var rcloneDep = _systemService.GetRcloneDependency();
 
-            var path = RcloneLocator.GetRclonePath();
-            var ver = File.Exists(path) ? $"v{GetFileVersion(path)}" : "未找到 rclone";
+            var exePath = RcloneLocator.GetRclonePath();
+            var ver = File.Exists(exePath) ? $"v{GetFileVersion(exePath)}" : "未找到 rclone";
 
-            return (fuseDep, rcloneDep, ver);
+            return (fuseDep, rcloneDep, ver, exePath);
         });
 
         FuseDependency = fuse;
         RcloneDependency = rclone;
         RcloneVersion = version;
+        RclonePath = path;
     }
 
+    /// <summary>
+    /// 打开指定依赖的安装页面
+    /// </summary>
     [RelayCommand]
-    private void OpenInstallUrl()
+    private void InstallDependency(SystemDependency? dependency)
     {
-        // 优先处理需要安装的依赖
-        var dependency = FuseDependency?.NeedsInstallation == true ? FuseDependency :
-                         RcloneDependency?.NeedsInstallation == true ? RcloneDependency :
-                         FuseDependency?.IsInstalled == false ? FuseDependency :
-                         RcloneDependency?.IsInstalled == false ? RcloneDependency : null;
-
-        if (dependency == null || string.IsNullOrEmpty(dependency.InstallUrl))
+        if (dependency == null || string.IsNullOrWhiteSpace(dependency.InstallUrl))
             return;
 
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = dependency.InstallUrl,
-                UseShellExecute = true
-            });
-        }
-        catch (Exception ex)
-        {
-            _notificationService.ShowError($"无法打开链接: {ex.Message}");
-        }
+        OpenUrl(dependency.InstallUrl);
     }
 
     [RelayCommand]
@@ -454,6 +366,79 @@ public partial class RcloneConfigPageViewModel : ObservableObject
     {
         await UpdateDependenciesAsync();
         _notificationService.ShowSuccess("依赖状态已刷新");
+    }
+
+    #endregion
+
+    #region 辅助方法
+
+    private static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";
+
+    /// <summary>
+    /// 同步运行 rclone 命令（调用方负责放到后台线程），返回退出码；超时返回 -1。
+    /// </summary>
+    private static int RunRclone(string arguments, int timeoutMilliseconds)
+    {
+        var rclonePath = RcloneLocator.GetRclonePath();
+        if (string.IsNullOrEmpty(rclonePath))
+            return -1;
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = rclonePath,
+                Arguments = arguments,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        process.Start();
+        if (!process.WaitForExit(timeoutMilliseconds))
+        {
+            try { process.Kill(); } catch { /* ignore */ }
+            return -1;
+        }
+
+        return process.ExitCode;
+    }
+
+    private void OpenFolder(string folder)
+    {
+        if (!Directory.Exists(folder))
+            return;
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _notificationService.ShowError($"无法打开文件夹: {ex.Message}");
+        }
+    }
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            _notificationService.ShowError($"无法打开链接: {ex.Message}");
+        }
     }
 
     #endregion
@@ -465,6 +450,18 @@ public partial class RemoteConfig : ObservableObject
     public Dictionary<string, string> Properties { get; set; } = new();
 
     public string Type => Properties.TryGetValue("type", out var t) ? t : "未知";
+
+    /// <summary>
+    /// 类型显示名（用于徽标）
+    /// </summary>
+    public string TypeLabel => Type.ToLowerInvariant() switch
+    {
+        "webdav" => "WebDAV",
+        "ftp" => "FTP",
+        "sftp" => "SFTP",
+        "s3" => "S3",
+        var other => other.ToUpperInvariant()
+    };
 
     [ObservableProperty]
     private bool _isMounted;

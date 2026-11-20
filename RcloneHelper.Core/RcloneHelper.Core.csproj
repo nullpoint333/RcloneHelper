@@ -16,4 +16,9 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.7" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- 单元测试需要访问 MountService 的参数构建逻辑 -->
+    <InternalsVisibleTo Include="RcloneHelper.Tests" />
+  </ItemGroup>
 </Project>

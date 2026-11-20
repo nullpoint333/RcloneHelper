@@ -30,6 +30,7 @@ public class MountService
     private readonly IConfigService _configService;
     private readonly INotificationService _notificationService;
     private readonly ConcurrentDictionary<string, Process> _mountProcesses = new();
+    private readonly ConcurrentDictionary<string, byte> _cancelRequested = new();
     private readonly SynchronizationContext? _syncContext;
     private readonly SemaphoreSlim _configLock = new(1, 1);
 
@@ -38,7 +39,31 @@ public class MountService
     /// </summary>
     public event Action? MountsChanged;
 
+    /// <summary>
+    /// 挂载状态变化事件（挂载成功/卸载/意外退出时触发），用于刷新 UI 分组。
+    /// </summary>
+    public event Action? MountStatusChanged;
+
     public ObservableCollection<MountInfo> Mounts { get; } = new();
+
+    /// <summary>
+    /// 当前实际生效的 rclone 缓存目录
+    /// </summary>
+    public string EffectiveCacheDir => PathUtil.GetEffectiveCacheDir(_configService.Current.CacheDir);
+
+    /// <summary>
+    /// 触发挂载状态变化事件，并保证在创建服务时的线程（通常是 UI 线程）上执行。
+    /// </summary>
+    private void RaiseMountStatusChanged()
+    {
+        if (MountStatusChanged == null)
+            return;
+
+        if (_syncContext != null && SynchronizationContext.Current != _syncContext)
+            _syncContext.Post(_ => MountStatusChanged?.Invoke(), null);
+        else
+            MountStatusChanged?.Invoke();
+    }
 
     public MountService(
         ISystemService systemService,
@@ -119,8 +144,10 @@ public class MountService
         if (string.IsNullOrWhiteSpace(mount.Name))
             throw new ArgumentException("挂载名称不能为空");
 
-        if (string.IsNullOrWhiteSpace(mount.Url))
-            throw new ArgumentException("URL 不能为空");
+        // 统一走模型校验：S3 没有 URL，早期实现的 "URL 不能为空" 会直接挡住 S3 挂载
+        var validationError = mount.Validate();
+        if (validationError != null)
+            throw new ArgumentException(validationError);
 
         // 检查是否已存在同名挂载
         if (Mounts.Any(m => m.Name == mount.Name))
@@ -158,43 +185,6 @@ public class MountService
         await CreateRcloneConfigAsync(mount);
 
         SaveMounts();
-    }
-
-    /// <summary>
-    /// 删除 rclone 配置
-    /// </summary>
-    private void DeleteRcloneConfig(string name)
-    {
-        try
-        {
-            _configLock.Wait();
-            try
-            {
-                _logger.Debug($"删除 rclone 配置: {name}");
-                var process = new Process
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = RcloneLocator.GetRclonePath(),
-                        Arguments = $"config delete {EscapeRcloneName(name)}",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
-                process.Start();
-                process.WaitForExit(5000);
-            }
-            finally
-            {
-                _configLock.Release();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.Error($"删除 rclone 配置失败: {name}, 错误: {ex.Message}");
-        }
     }
 
     /// <summary>
@@ -373,14 +363,18 @@ public class MountService
                             {
                                 _mountProcesses.TryRemove(name, out _);
 
+                                // 取消上传时是我们主动结束进程的，不提示「意外断开」
+                                var cancelledByUser = _cancelRequested.TryRemove(name, out _);
+
                                 // 只有 IsMounted=true（曾经挂载成功过）才视为"意外断开"并通知用户。
                                 // 启动阶段的退出由轮询循环统一报错，Exited 回调不重复处理。
-                                if (mount.IsMounted)
+                                if (mount.IsMounted && !cancelledByUser)
                                 {
                                     mount.IsMounted = false;
                                     mount.Status = "未挂载";
                                     _logger.Warning($"挂载意外退出: {name}");
                                     _notificationService.ShowWarning($"挂载 \"{name}\" 已意外断开");
+                                    RaiseMountStatusChanged();
                                 }
                             }
 
@@ -553,6 +547,7 @@ public class MountService
                         mount.Status = $"已挂载到 {mount.LocalDrive}";
                         mount.MountCancellationTokenSource = null;
                         _logger.Info($"挂载成功: {name} -> {mount.LocalDrive}");
+                        RaiseMountStatusChanged();
 
                         return true;
                     }
@@ -620,18 +615,18 @@ public class MountService
         // remote path: name: 或 name:/path (rclone remote 名称需要转义特殊字符)
         // 对于包含特殊字符的名称，使用引号包裹
         var escapedName = EscapeRcloneName(mount.Name);
-        var remotePath = string.IsNullOrWhiteSpace(mount.RemotePath)
-            ? $"{escapedName}:"
-            : $"{escapedName}:{mount.RemotePath}";
+        var remotePath = BuildRemotePath(escapedName, mount);
 
         // 基础参数
         // --vfs-cache-mode writes: 写入立即刷新到远端
         // --no-modtime: 避免每次都改文件时间戳导致 WebDAV 服务器压力
-        var args = $"mount {remotePath} {mount.LocalDrive} --vfs-cache-mode writes --links";
+        var args = new StringBuilder();
+        args.Append("mount ").Append(remotePath).Append(' ').Append(QuoteArg(mount.LocalDrive));
+        args.Append(" --vfs-cache-mode writes --links");
 
-        // 缓存目录：用户可在 rclone 配置页自定义，修改后重新挂载生效。
+        // 缓存目录：用户可在「设置 → rclone 缓存」中自定义，修改后重新挂载生效。
         // 始终显式传递 --cache-dir，避免 rclone 默认落到 C 盘且行为不可控。
-        var cacheDir = PathUtil.GetEffectiveCacheDir(_configService.Current.CacheDir);
+        var cacheDir = EffectiveCacheDir;
         try
         {
             Directory.CreateDirectory(cacheDir);
@@ -640,23 +635,59 @@ public class MountService
         {
             _logger.Warning($"创建 rclone 缓存目录失败: {cacheDir}, 错误: {ex.Message}");
         }
-        args += $" --cache-dir \"{cacheDir}\"";
+        args.Append(" --cache-dir ").Append(QuoteArg(cacheDir));
+
+        // 缓存上限（可选）：留空则交给 rclone 默认行为（不限制）
+        var cacheMaxSize = AppConfig.NormalizeCacheSize(_configService.Current.VfsCacheMaxSize);
+        if (!string.IsNullOrWhiteSpace(cacheMaxSize))
+            args.Append(" --vfs-cache-max-size ").Append(cacheMaxSize);
 
         // 网络模式
         if (mount.UseNetworkMode)
         {
             // 用 PID + 短随机后缀保证 volname 在同一会话内唯一，避免残留共享名冲突
             var uniqueSuffix = Guid.NewGuid().ToString("N").Substring(0, 8);
-            args += $" --network-mode --volname \\\\rclone\\{mount.Name}_{uniqueSuffix}";
+            args.Append(" --network-mode --volname ").Append(QuoteArg($@"\\rclone\{mount.Name}_{uniqueSuffix}"));
         }
         else
         {
             // 普通盘符模式：使用挂载名作为卷标，不走网络共享，从根本上规避 80070050 残留问题
-            args += $" --volname \"{mount.Name}\"";
+            args.Append(" --volname ").Append(QuoteArg(mount.Name));
         }
 
-        return args;
+        return args.ToString();
     }
+
+    /// <summary>
+    /// 构建 rclone 的远程路径部分（remote:path）。
+    /// WebDAV 的路径已经包含在配置文件 url 里，FTP/SFTP 的配置只有 host/port，
+    /// 路径必须在这里拼到 remote 后面，否则「路径」字段会被忽略。
+    /// </summary>
+    internal static string BuildRemotePath(string escapedName, MountInfo mount)
+    {
+        if (mount.IsS3Type)
+        {
+            var bucket = (mount.RemotePath ?? "").Trim().TrimStart('/');
+            return string.IsNullOrWhiteSpace(bucket) ? $"{escapedName}:" : $"{escapedName}:{bucket}";
+        }
+
+        if (mount.IsFtpType || mount.IsSftpType)
+        {
+            var path = string.IsNullOrWhiteSpace(mount.Path) ? mount.RemotePath : mount.Path;
+            path = (path ?? "").Trim().TrimStart('/');
+            return string.IsNullOrWhiteSpace(path) ? $"{escapedName}:" : $"{escapedName}:/{path}";
+        }
+
+        return string.IsNullOrWhiteSpace(mount.RemotePath)
+            ? $"{escapedName}:"
+            : $"{escapedName}:{mount.RemotePath}";
+    }
+
+    /// <summary>
+    /// 为命令行参数加引号（内部双引号转义），避免名称/路径中的特殊字符破坏命令
+    /// </summary>
+    private static string QuoteArg(string? value)
+        => $"\"{(value ?? "").Replace("\"", "\\\"")}\"";
 
     /// <summary>
     /// 转义 rclone remote 名称中的特殊字符
@@ -799,6 +830,7 @@ public class MountService
             mount.Status = "未挂载";
             _mountProcesses.TryRemove(name, out _);
             _logger.Info($"卸载成功: {name}");
+            RaiseMountStatusChanged();
         }
         catch (Exception ex)
         {
@@ -814,6 +846,122 @@ public class MountService
     public Task UnmountAsync(string name)
     {
         return Task.Run(() => Unmount(name));
+    }
+
+    /// <summary>
+    /// 读取某个挂载的待上传缓存统计（文件数、字节数）。
+    /// rclone 在 --vfs-cache-mode writes 下会先把写入落到 &lt;cache-dir&gt;/vfs/&lt;remote&gt;，
+    /// 所以这个目录的大小约等于「已写入但还没上传完」的数据量。
+    /// 纯文件 IO，调用方应放到后台线程执行。
+    /// </summary>
+    public (int Files, long Bytes) GetPendingUploadStats(MountInfo mount)
+    {
+        var dir = PathUtil.GetVfsCacheDir(EffectiveCacheDir, mount.Name);
+        return PathUtil.GetDirectoryStats(dir);
+    }
+
+    /// <summary>
+    /// 取消某个挂载的后台上传：
+    /// 1) 立即结束 rclone 进程（避免它继续把缓存上传完）；
+    /// 2) 删除该 remote 的 VFS 待上传缓存（仅杀进程还不够，rclone 下次挂载会续传）；
+    /// 3) 按需重新挂载。
+    /// </summary>
+    /// <param name="name">挂载名称</param>
+    /// <param name="remount">取消后是否自动重新挂载</param>
+    /// <returns>释放的缓存字节数与重新挂载错误（成功为 null）</returns>
+    public async Task<(long FreedBytes, string? RemountError)> CancelPendingUploadsAsync(string name, bool remount)
+    {
+        var mount = GetMount(name);
+        if (mount == null)
+            throw new InvalidOperationException($"未找到名为 {name} 的挂载");
+
+        // 1. 立即结束进程：正常卸载会让 rclone 先完成队列中的上传，这里必须直接 Kill
+        _cancelRequested[name] = 1;
+        if (_mountProcesses.TryRemove(name, out var process))
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill();
+                    process.WaitForExit(5000);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"取消上传时结束 rclone 进程失败: {name}, 错误: {ex.Message}");
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        // 2. 等待挂载点释放
+        var waitStart = DateTime.UtcNow;
+        while (IsMountPointAccessible(mount.LocalDrive)
+               && DateTime.UtcNow - waitStart < TimeSpan.FromSeconds(5))
+        {
+            await Task.Delay(200);
+        }
+
+        // 3. 丢弃待上传缓存
+        var freed = await Task.Run(() => DiscardVfsCache(mount.Name));
+
+        mount.IsMounted = false;
+        mount.IsMounting = false;
+        mount.Status = "未挂载";
+        _cancelRequested.TryRemove(name, out _);
+        _logger.Info($"已取消后台上传: {name}，丢弃缓存 {freed} 字节");
+        RaiseMountStatusChanged();
+
+        // 4. 重新挂载
+        string? remountError = null;
+        if (remount)
+        {
+            try
+            {
+                await MountAsync(name);
+            }
+            catch (Exception ex)
+            {
+                remountError = ex.Message;
+                _logger.Error($"取消上传后重新挂载失败: {name}, 错误: {ex.Message}");
+            }
+        }
+
+        return (freed, remountError);
+    }
+
+    /// <summary>
+    /// 删除某个 remote 的 VFS 待上传缓存与元数据，返回释放的字节数
+    /// </summary>
+    private long DiscardVfsCache(string remoteName)
+    {
+        var cacheDir = EffectiveCacheDir;
+        var freed = 0L;
+
+        foreach (var dir in new[]
+                 {
+                     PathUtil.GetVfsCacheDir(cacheDir, remoteName),
+                     PathUtil.GetVfsMetaDir(cacheDir, remoteName)
+                 })
+        {
+            if (!Directory.Exists(dir))
+                continue;
+
+            freed += PathUtil.GetDirectorySize(dir);
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"删除 VFS 缓存目录失败: {dir}, 错误: {ex.Message}");
+            }
+        }
+
+        return freed;
     }
 
     #region 连接测试
@@ -1016,6 +1164,8 @@ public class MountService
                 mount.Status = "未挂载";
             }
         }
+
+        RaiseMountStatusChanged();
     }
 
     /// <summary>
@@ -1288,17 +1438,12 @@ public class MountService
 
             // 转义名称中的特殊字符
             var escapedName = EscapeRcloneName(mount.Name);
-            var configArgs = $"config create {escapedName} {mount.Type} ";
-            configArgs += $"url \"{mount.Url}\" ";
 
-            if (!string.IsNullOrWhiteSpace(mount.User))
-                configArgs += $"user \"{mount.User}\" ";
-
-            if (!string.IsNullOrWhiteSpace(mount.Password))
-                configArgs += $"pass \"{mount.Password}\" ";
-
-            if (mount.Type == "webdav" && !string.IsNullOrWhiteSpace(mount.Vendor))
-                configArgs += $"vendor \"{mount.Vendor}\" ";
+            // 不同后端需要的字段不同：
+            //  - WebDAV: url/vendor/user/pass
+            //  - FTP/SFTP: host/port/user/pass（早期版本只传 url，rclone 缺少 host 会直接失败）
+            //  - S3: provider/access_key_id/secret_access_key/region/endpoint
+            var configArgs = BuildConfigCreateArgs(escapedName, mount);
 
             var process = new Process
             {
@@ -1318,12 +1463,21 @@ public class MountService
 
             _logger.Debug($"创建/更新 rclone 配置: {mount.Name}");
             process.Start();
+
+            // 并发读取两个输出流，避免管道写满导致进程卡住
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+            await stdoutTask;
 
             if (process.ExitCode != 0)
             {
-                var error = await process.StandardError.ReadToEndAsync();
+                var error = (await stderrTask).Trim();
                 _logger.Error($"创建 rclone 配置失败: {mount.Name}, 错误: {error}");
+                throw new InvalidOperationException(
+                    string.IsNullOrWhiteSpace(error)
+                        ? $"写入 rclone 配置失败（退出码 {process.ExitCode}）"
+                        : $"写入 rclone 配置失败：{error}");
             }
         }
         finally
@@ -1331,6 +1485,63 @@ public class MountService
             _configLock.Release();
         }
     }
+
+    /// <summary>
+    /// 按后端类型生成 rclone config create 参数。
+    /// rclone 的 config create 只接受目标后端真正拥有的配置项：
+    /// FTP/SFTP 用 host/port，S3 用 provider/access_key_id 等，传 url 会被当成无效字段。
+    /// </summary>
+    internal static string BuildConfigCreateArgs(string escapedName, MountInfo mount)
+    {
+        var args = new StringBuilder();
+        args.Append("config create ").Append(escapedName).Append(' ').Append(mount.Type).Append(' ');
+
+        void Add(string key, string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+            args.Append(key).Append(' ').Append(QuoteArg(value)).Append(' ');
+        }
+
+        if (mount.IsS3Type)
+        {
+            Add("provider", MapS3Provider(mount.S3Provider));
+            Add("access_key_id", mount.AccessKeyId);
+            Add("secret_access_key", mount.SecretAccessKey);
+            Add("region", mount.Region);
+            Add("endpoint", mount.Endpoint);
+        }
+        else if (mount.IsFtpType || mount.IsSftpType)
+        {
+            Add("host", mount.Host);
+            Add("port", mount.Port > 0 ? mount.Port.ToString() : null);
+            Add("user", mount.User);
+            Add("pass", mount.Password);
+        }
+        else
+        {
+            Add("url", mount.Url);
+            Add("user", mount.User);
+            Add("pass", mount.Password);
+            if (mount.Type == "webdav")
+                Add("vendor", mount.Vendor);
+        }
+
+        // --obscure：密码字段一定按“未加密”处理，避免 rclone 把 22 位以上的
+        // 纯 base64 明文误判成已加密内容而原样写入配置。
+        args.Append("--obscure --non-interactive");
+        return args.ToString();
+    }
+
+    /// <summary>
+    /// 把界面上的 S3 服务商名称映射到 rclone 的 provider 值
+    /// </summary>
+    private static string MapS3Provider(string? provider) => (provider ?? "").Trim() switch
+    {
+        "" => "AWS",
+        "Google" => "GCS",
+        var other => other
+    };
 
     private async Task DeleteRcloneConfigAsync(string name)
     {
@@ -1366,7 +1577,12 @@ public class MountService
                 }
             };
             process.Start();
+
+            // 并发读取输出流，避免管道写满导致 WaitForExitAsync 卡住
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
             await process.WaitForExitAsync();
+            await Task.WhenAll(stdoutTask, stderrTask);
         }
         catch (Exception ex)
         {

@@ -3,344 +3,447 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="using:RcloneHelper.Core.Pages"
-             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             xmlns:models="using:RcloneHelper.Models"
+             mc:Ignorable="d" d:DesignWidth="820" d:DesignHeight="620"
              x:Class="RcloneHelper.Views.Pages.HomePage"
              x:DataType="vm:HomePageViewModel">
-    <Design.DataContext>
-        <vm:HomePageViewModel />
-    </Design.DataContext>
-    <UserControl.Styles>
-        <Style Selector="Button">
-            <Setter Property="Margin" Value="5" />
-            <Setter Property="Padding" Value="15,8" />
-        </Style>
-        <Style Selector="TextBox">
-            <Setter Property="Margin" Value="5" />
-        </Style>
-        <Style Selector="ComboBox">
-            <Setter Property="Margin" Value="5" />
-        </Style>
-        <!-- 操作按钮样式 - 无焦点视觉效果 -->
-        <Style Selector="Button.action">
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FocusAdorner" Value="{x:Null}" />
-        </Style>
-        <Style Selector="Button.action:focus">
-            <Setter Property="Background" Value="Transparent" />
-        </Style>
-        <Style Selector="Button.action:pointerover">
-            <Setter Property="Background" Value="{DynamicResource SurfaceLowBrush}" />
-        </Style>
-        <Style Selector="Button.action:pressed">
-            <Setter Property="Background" Value="{DynamicResource SurfaceHighBrush}" />
-        </Style>
-    </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,*,Auto">
-        <!-- 标题栏 -->
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" Padding="15">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <!-- ===================== 操作栏 ===================== -->
+        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}"
+                BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+                Padding="20,12">
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Grid.Column="0" Text="挂载管理" FontSize="20" FontWeight="Bold" 
-                           Foreground="{DynamicResource ForegroundBrush}" VerticalAlignment="Center" />
-                <Button Grid.Column="1" Content="添加挂载" Command="{Binding AddMountCommand}" 
-                        Background="{DynamicResource AccentBrush}" 
-                        Foreground="{DynamicResource AccentForegroundBrush}" Padding="12,6" />
+                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="挂载管理" FontSize="18" FontWeight="Bold"
+                                   Foreground="{DynamicResource ForegroundBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding SummaryText}" Classes="hint"
+                                   VerticalAlignment="Bottom" Margin="0,0,0,2" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding UploadSummaryText}" FontSize="11"
+                               Foreground="{DynamicResource WarningBrush}"
+                               IsVisible="{Binding HasAnyPendingUploads}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                            VerticalAlignment="Center">
+                    <Button Classes="ghost" Command="{Binding RefreshStatusCommand}" ToolTip.Tip="重新扫描挂载状态">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Width="13" Height="13" Stretch="Uniform"
+                                  Fill="{DynamicResource ForegroundSecondaryBrush}"
+                                  Data="{DynamicResource IconRefresh}" />
+                            <TextBlock Text="刷新" FontSize="12" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="secondary" Content="全部挂载" Command="{Binding MountAllCommand}" />
+                    <Button Classes="secondary" Content="全部卸载" Command="{Binding UnmountAllCommand}" />
+                    <Button Classes="primary" Command="{Binding AddMountCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Width="12" Height="12" Stretch="Uniform"
+                                  Fill="{DynamicResource AccentForegroundBrush}"
+                                  Data="{DynamicResource IconAdd}" />
+                            <TextBlock Text="添加挂载" FontSize="13" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- 主内容区 -->
-        <Grid Grid.Row="1" Margin="10">
-            <!-- 挂载列表 -->
-            <Grid Margin="5">
-                <Grid RowDefinitions="Auto,*">
-                    <!-- 标题栏 -->
-                    <Border Grid.Row="0" Background="{DynamicResource AccentBrush}" Padding="10,8">
-                        <Grid ColumnDefinitions="50,*,80,80,100">
-                            <TextBlock Grid.Column="0" Text="状态" FontWeight="Bold" Foreground="{DynamicResource AccentForegroundBrush}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="1" Text="名称" FontWeight="Bold" Foreground="{DynamicResource AccentForegroundBrush}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="2" Text="类型" FontWeight="Bold" Foreground="{DynamicResource AccentForegroundBrush}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="3" Text="盘符" FontWeight="Bold" Foreground="{DynamicResource AccentForegroundBrush}" VerticalAlignment="Center" />
-                            <TextBlock Grid.Column="4" Text="操作" FontWeight="Bold" Foreground="{DynamicResource AccentForegroundBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" />
-                        </Grid>
-                    </Border>
-
-                    <!-- 挂载列表 -->
-                    <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1">
-                        <ScrollViewer>
-                            <ItemsControl ItemsSource="{Binding AllMounts}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1" Padding="10,8">
-                                            <Border.Styles>
-                                                <Style Selector="Border:pointerover">
-                                                    <Setter Property="Background" Value="{DynamicResource ListItemHoverBrush}" />
-                                                </Style>
-                                            </Border.Styles>
-                                            <Grid ColumnDefinitions="50,*,80,80,100">
-                                                <!-- 状态 -->
-                                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
-                                                    <Ellipse Width="10" Height="10" Fill="{DynamicResource SuccessBrush}" 
-                                                             IsVisible="{Binding IsMounted}" />
-                                                    <Ellipse Width="10" Height="10" Fill="{DynamicResource ForegroundMutedBrush}" 
-                                                             IsVisible="{Binding !IsMounted}" />
-                                                </StackPanel>
-
-                                                <!-- 名称 -->
-                                                <TextBlock Grid.Column="1" Text="{Binding Name}" FontWeight="Bold" 
-                           VerticalAlignment="Center" Foreground="{DynamicResource ForegroundBrush}" />
-
-                                                <!-- 类型 -->
-                                                <TextBlock Grid.Column="2" Text="{Binding Type}" VerticalAlignment="Center" 
-                           Foreground="{DynamicResource ForegroundMutedBrush}" />
-
-                                                <!-- 盘符 -->
-                                                <TextBlock Grid.Column="3" Text="{Binding LocalDrive}" VerticalAlignment="Center" 
-                           FontWeight="Bold" Foreground="{DynamicResource SuccessBrush}" />
-
-                                                <!-- 操作按钮 -->
-                                                <StackPanel Grid.Column="4" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="2">
-                                                    <!-- 播放按钮 - 未挂载且未在挂载中时显示 -->
-                                                    <Button Classes="action" IsVisible="{Binding CanMount}" Background="Transparent" Padding="8,3" Margin="0" Cursor="Hand"
-                                                            Command="{Binding $parent[UserControl].DataContext.MountItemCommand}"
-                                                            CommandParameter="{Binding}">
-                                                        <Path Width="12" Height="12" Stretch="Uniform" 
-                                                              Fill="{DynamicResource ForegroundBrush}"
-                                                              Data="{DynamicResource IconPlay}" />
-                                                    </Button>
-                                                    <!-- 取消按钮 - 正在挂载中时显示 -->
-                                                    <Button Classes="action" IsVisible="{Binding IsMounting}" Background="Transparent" Padding="8,3" Margin="0" Cursor="Hand"
-                                                            Command="{Binding $parent[UserControl].DataContext.CancelMountItemCommand}"
-                                                            CommandParameter="{Binding}">
-                                                        <Path Width="12" Height="12" Stretch="Uniform" 
-                                                              Fill="{DynamicResource ErrorBrush}"
-                                                              Data="{DynamicResource IconClose}" />
-                                                    </Button>
-                                                    <!-- 暂停按钮 - 已挂载时显示 -->
-                                                    <Button Classes="action" IsVisible="{Binding IsMounted}" Background="Transparent" Padding="8,3" Margin="0" Cursor="Hand"
-                                                            Command="{Binding $parent[UserControl].DataContext.UnmountItemCommand}"
-                                                            CommandParameter="{Binding}">
-                                                        <Path Width="12" Height="12" Stretch="Uniform" 
-                                                              Fill="{DynamicResource ForegroundBrush}"
-                                                              Data="{DynamicResource IconPause}" />
-                                                    </Button>
-                                                    <!-- 编辑按钮 -->
-                                                    <Button Classes="action" Background="Transparent" Padding="8,3" Margin="0" Cursor="Hand"
-                                                            Command="{Binding $parent[UserControl].DataContext.EditItemCommand}"
-                                                            CommandParameter="{Binding}">
-                                                        <Path Width="12" Height="12" Stretch="Uniform" 
-                                                              Fill="{DynamicResource ForegroundBrush}"
-                                                              Data="{DynamicResource IconEdit}" />
-                                                    </Button>
-                                                    <!-- 删除按钮 -->
-                                                    <Button Classes="action" Background="Transparent" Padding="8,3" Margin="0" Cursor="Hand"
-                                                            Command="{Binding $parent[UserControl].DataContext.DeleteItemCommand}"
-                                                            CommandParameter="{Binding}">
-                                                        <Path Width="12" Height="12" Stretch="Uniform" 
-                                                              Fill="{DynamicResource ForegroundBrush}"
-                                                              Data="{DynamicResource IconDelete}" />
-                                                    </Button>
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </Border>
-                </Grid>
-            </Grid>
+        <!-- ===================== 搜索与筛选 ===================== -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="20,12,20,10">
+            <TextBox Grid.Column="0" Width="300" HorizontalAlignment="Left"
+                     Text="{Binding SearchText}"
+                     PlaceholderText="搜索名称、类型、地址或挂载点" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Classes="chip" Classes.active="{Binding FilterAll}"
+                        Content="全部" Command="{Binding SetFilterCommand}" CommandParameter="all" />
+                <Button Classes="chip" Classes.active="{Binding FilterMounted}"
+                        Content="已挂载" Command="{Binding SetFilterCommand}" CommandParameter="mounted" />
+                <Button Classes="chip" Classes.active="{Binding FilterUnmounted}"
+                        Content="未挂载" Command="{Binding SetFilterCommand}" CommandParameter="unmounted" />
+            </StackPanel>
         </Grid>
 
-<!-- 编辑面板 -->
-        <Border Grid.Row="0" Grid.RowSpan="2" Background="#80000000" IsVisible="{Binding IsEditing}">
-            <Border Background="{DynamicResource SurfaceBrush}" Width="520" Padding="20" 
-                    VerticalAlignment="Center" HorizontalAlignment="Center" CornerRadius="5">
-                <Grid RowDefinitions="Auto,*,Auto">
-                    <TextBlock Grid.Row="0" Text="编辑挂载" FontSize="18" FontWeight="Bold" Margin="0,0,0,20"
-                               Foreground="{DynamicResource ForegroundBrush}" />
+        <!-- ===================== 挂载列表 ===================== -->
+        <Border Grid.Row="2" Margin="20,0,20,18" Classes="card" Padding="0">
+            <Grid RowDefinitions="Auto,*">
+                <!-- 表头 -->
+                <Border Grid.Row="0" Padding="18,10"
+                        BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="36,*,96,120">
+                        <TextBlock Grid.Column="0" Text="状态" Classes="hint" />
+                        <TextBlock Grid.Column="1" Text="名称" Classes="hint" />
+                        <TextBlock Grid.Column="2" Text="挂载点" Classes="hint" />
+                        <TextBlock Grid.Column="3" Text="操作" Classes="hint" HorizontalAlignment="Right" />
+                    </Grid>
+                </Border>
 
-                    <ScrollViewer Grid.Row="1" MaxHeight="450">
-                        <Grid ColumnDefinitions="120,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
-                            <!-- 基础字段 -->
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="名称:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}" />
-                            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding EditingMount.Name}" PlaceholderText="输入名称" />
+                <ListBox Grid.Row="1"
+                         Classes="mountList"
+                         ItemsSource="{Binding VisibleMounts}"
+                         SelectedItem="{Binding SelectedMount}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="models:MountInfo">
+                            <Grid ColumnDefinitions="36,*,96,120" Margin="12,9">
+                                <!-- 状态灯 -->
+                                <Panel Grid.Column="0" VerticalAlignment="Center">
+                                    <Ellipse Width="9" Height="9" HorizontalAlignment="Left"
+                                             Fill="{DynamicResource SuccessBrush}"
+                                             IsVisible="{Binding IsMounted}" />
+                                    <Ellipse Width="9" Height="9" HorizontalAlignment="Left"
+                                             Fill="{DynamicResource WarningBrush}"
+                                             IsVisible="{Binding IsMounting}" />
+                                    <Ellipse Width="9" Height="9" HorizontalAlignment="Left"
+                                             Fill="{DynamicResource ForegroundDisabledBrush}"
+                                             IsVisible="{Binding CanMount}" />
+                                </Panel>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="类型:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}" />
-                            <ComboBox Grid.Row="1" Grid.Column="1" SelectedItem="{Binding EditingMount.Type}" HorizontalAlignment="Stretch">
-                                <x:String>webdav</x:String>
-                                <x:String>ftp</x:String>
-                                <x:String>sftp</x:String>
-                                <x:String>s3</x:String>
-                            </ComboBox>
+                                <!-- 名称 + 类型徽标 + 状态 -->
+                                <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center" Margin="0,0,10,0">
+                                    <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource ForegroundBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Classes="badge">
+                                            <TextBlock Text="{Binding TypeLabel}" Classes="badgeText" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Status}" FontSize="11"
+                                                   Foreground="{DynamicResource ForegroundMutedBrush}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                    <!-- 后台上传：rclone 写缓存模式下复制会立即返回，这里显示真实进度并可取消 -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6"
+                                                IsVisible="{Binding HasPendingUploads}">
+                                        <TextBlock Text="{Binding PendingUploadText, StringFormat='后台上传中 {0}'}"
+                                                   FontSize="11" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource WarningBrush}" />
+                                        <Button Classes="ghost" Padding="6,0" FontSize="11"
+                                                Content="取消上传" Foreground="{DynamicResource WarningBrush}"
+                                                Command="{Binding $parent[UserControl].((vm:HomePageViewModel)DataContext).CancelUploadCommand}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </StackPanel>
 
-                            <!-- WebDAV/FTP/SFTP 通用字段：主机地址 -->
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="主机地址:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsNetworkStorageType}" />
-                            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="Auto,*,Auto,Auto" 
-                                  IsVisible="{Binding EditingMount.IsWebDavType}">
-                                <ComboBox Grid.Column="0" SelectedItem="{Binding EditingMount.Protocol}" 
-                                          ItemsSource="{Binding ProtocolOptions}" MinWidth="75" Margin="5,5,5,5" />
-                                <TextBox Grid.Column="1" Text="{Binding EditingMount.Host}" PlaceholderText="example.com" Margin="0,5" />
-                                <TextBlock Grid.Column="2" Text=":" VerticalAlignment="Center" Margin="0"
-                                           Foreground="{DynamicResource ForegroundMutedBrush}" />
-                                <TextBox Grid.Column="3" Text="{Binding EditingMount.Port}" PlaceholderText="443" Width="65" Margin="5,5,5,5" />
+                                <!-- 挂载点 -->
+                                <TextBlock Grid.Column="2" Text="{Binding LocalDrive}" FontSize="13"
+                                           FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource ForegroundSecondaryBrush}" />
+
+                                <!-- 操作 -->
+                                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="2"
+                                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <Button Classes="iconOnly" IsVisible="{Binding CanMount}"
+                                            ToolTip.Tip="挂载"
+                                            Command="{Binding $parent[UserControl].((vm:HomePageViewModel)DataContext).MountItemCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Width="13" Height="13" Stretch="Uniform"
+                                              Fill="{DynamicResource AccentBrush}"
+                                              Data="{DynamicResource IconPlay}" />
+                                    </Button>
+                                    <Button Classes="iconOnly" IsVisible="{Binding IsMounting}"
+                                            ToolTip.Tip="取消挂载"
+                                            Command="{Binding $parent[UserControl].((vm:HomePageViewModel)DataContext).CancelMountItemCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Width="12" Height="12" Stretch="Uniform"
+                                              Fill="{DynamicResource ErrorBrush}"
+                                              Data="{DynamicResource IconClose}" />
+                                    </Button>
+                                    <Button Classes="iconOnly" IsVisible="{Binding IsMounted}"
+                                            ToolTip.Tip="卸载"
+                                            Command="{Binding $parent[UserControl].((vm:HomePageViewModel)DataContext).UnmountItemCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Width="13" Height="13" Stretch="Uniform"
+                                              Fill="{DynamicResource ForegroundSecondaryBrush}"
+                                              Data="{DynamicResource IconStop}" />
+                                    </Button>
+                                    <Button Classes="iconOnly"
+                                            ToolTip.Tip="编辑（运行中进入只读查看）"
+                                            Command="{Binding $parent[UserControl].((vm:HomePageViewModel)DataContext).EditItemCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Width="13" Height="13" Stretch="Uniform"
+                                              Fill="{DynamicResource ForegroundSecondaryBrush}"
+                                              Data="{DynamicResource IconEdit}" />
+                                    </Button>
+                                    <Button Classes="iconOnly"
+                                            ToolTip.Tip="删除"
+                                            Command="{Binding $parent[UserControl].((vm:HomePageViewModel)DataContext).DeleteItemCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Path Width="13" Height="13" Stretch="Uniform"
+                                              Fill="{DynamicResource ForegroundSecondaryBrush}"
+                                              Data="{DynamicResource IconDelete}" />
+                                    </Button>
+                                </StackPanel>
                             </Grid>
-                            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto" 
-                                  IsVisible="{Binding EditingMount.IsFtpType}">
-                                <TextBox Grid.Column="0" Text="{Binding EditingMount.Host}" PlaceholderText="ftp.example.com" Margin="0" />
-                                <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="5,0"
-                                           Foreground="{DynamicResource ForegroundMutedBrush}" />
-                                <TextBox Grid.Column="2" Text="{Binding EditingMount.Port}" PlaceholderText="21" Width="60" Margin="0" />
-                            </Grid>
-                            <Grid Grid.Row="2" Grid.Column="1" ColumnDefinitions="*,Auto,Auto" 
-                                  IsVisible="{Binding EditingMount.IsSftpType}">
-                                <TextBox Grid.Column="0" Text="{Binding EditingMount.Host}" PlaceholderText="sftp.example.com" Margin="0" />
-                                <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="5,0"
-                                           Foreground="{DynamicResource ForegroundMutedBrush}" />
-                                <TextBox Grid.Column="2" Text="{Binding EditingMount.Port}" PlaceholderText="22" Width="60" Margin="0" />
-                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
 
-                            <!-- WebDAV/FTP/SFTP 路径 -->
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="路径:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsNetworkStorageType}" />
-                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding EditingMount.Path}" 
-                                     PlaceholderText="路径 (可选)"
-                                     IsVisible="{Binding EditingMount.IsNetworkStorageType}" />
+                <!-- 空状态 -->
+                <StackPanel Grid.Row="1" IsVisible="{Binding IsListEmpty}"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Spacing="10" Margin="0,60,0,60" MaxWidth="360">
+                    <Path Width="38" Height="38" Stretch="Uniform"
+                          Fill="{DynamicResource ForegroundDisabledBrush}"
+                          Data="{DynamicResource IconCloud}" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding EmptyTitle}" FontSize="14" FontWeight="SemiBold"
+                               HorizontalAlignment="Center"
+                               Foreground="{DynamicResource ForegroundSecondaryBrush}" />
+                    <TextBlock Text="{Binding EmptyHint}" Classes="hint" TextAlignment="Center"
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Border>
 
-                            <!-- WebDAV/FTP/SFTP 用户名 -->
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="用户名:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsNetworkStorageType}" />
-                            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding EditingMount.User}" PlaceholderText="可选"
-                                     IsVisible="{Binding EditingMount.IsNetworkStorageType}" />
-
-                            <!-- WebDAV/FTP/SFTP 密码 -->
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="密码:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsNetworkStorageType}" />
-                            <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding EditingMount.Password}" PasswordChar="*" PlaceholderText="可选"
-                                     IsVisible="{Binding EditingMount.IsNetworkStorageType}" />
-
-                            <!-- WebDAV 服务商 -->
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="服务商:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsWebDavType}" />
-                            <ComboBox Grid.Row="6" Grid.Column="1" SelectedItem="{Binding EditingMount.Vendor}" HorizontalAlignment="Stretch"
-                                      IsVisible="{Binding EditingMount.IsWebDavType}">
-                                <x:String>other</x:String>
-                                <x:String>owncloud</x:String>
-                                <x:String>nextcloud</x:String>
-                                <x:String>sharepoint</x:String>
-                                <x:String>fastmail</x:String>
-                            </ComboBox>
-
-                            <!-- S3 配置 -->
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="服务商:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsS3Type}" />
-                            <ComboBox Grid.Row="2" Grid.Column="1" SelectedItem="{Binding EditingMount.S3Provider}" HorizontalAlignment="Stretch"
-                                      IsVisible="{Binding EditingMount.IsS3Type}">
-                                <x:String>AWS</x:String>
-                                <x:String>Alibaba</x:String>
-                                <x:String>TencentCOS</x:String>
-                                <x:String>Google</x:String>
-                                <x:String>Other</x:String>
-                            </ComboBox>
-
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Access Key:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsS3Type}" />
-                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding EditingMount.AccessKeyId}" PlaceholderText="Access Key ID"
-                                     IsVisible="{Binding EditingMount.IsS3Type}" />
-
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Secret Key:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsS3Type}" />
-                            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding EditingMount.SecretAccessKey}" PasswordChar="*" PlaceholderText="Secret Access Key"
-                                     IsVisible="{Binding EditingMount.IsS3Type}" />
-
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="区域:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsS3Type}" />
-                             <TextBox Grid.Row="5" Grid.Column="1" Text="{Binding EditingMount.Region}" PlaceholderText="如: us-east-1, ap-northeast-1"
-                                     IsVisible="{Binding EditingMount.IsS3Type}" />
-
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="Endpoint:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsS3Type}" />
-                            <TextBox Grid.Row="6" Grid.Column="1" Text="{Binding EditingMount.Endpoint}" PlaceholderText="可选，用于兼容S3的服务"
-                                     IsVisible="{Binding EditingMount.IsS3Type}" />
-
-                            <TextBlock Grid.Row="7" Grid.Column="0" Text="Bucket:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.IsS3Type}" />
-                            <TextBox Grid.Row="7" Grid.Column="1" Text="{Binding EditingMount.RemotePath}" PlaceholderText="bucket-name 或 bucket/path"
-                                     IsVisible="{Binding EditingMount.IsS3Type}" />
-
-                            <!-- 其他类型 URL 输入 -->
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="URL:" VerticalAlignment="Center" Margin="5"
-                                       Foreground="{DynamicResource ForegroundBrush}"
-                                       IsVisible="{Binding EditingMount.UseUrlInput}" />
-                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding EditingMount.Url}" PlaceholderText="https://example.com/path"
-                                     IsVisible="{Binding EditingMount.UseUrlInput}" />
-
-<!-- 通用字段：本地盘符 -->
-                            <TextBlock Grid.Row="10" Grid.Column="0" Text="本地盘符:" VerticalAlignment="Center" Margin="5"
+        <!-- ===================== 编辑 / 查看对话框 ===================== -->
+        <Border Grid.Row="0" Grid.RowSpan="3" ZIndex="100"
+                Background="{DynamicResource OverlayBrush}"
+                IsVisible="{Binding IsEditing}">
+            <Border Classes="dialog" Width="590" MaxHeight="680"
+                    VerticalAlignment="Center" HorizontalAlignment="Center">
+                <Grid RowDefinitions="Auto,Auto,*,Auto">
+                    <!-- 标题 -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="3">
+                            <TextBlock Text="{Binding DialogTitle}" FontSize="17" FontWeight="Bold"
                                        Foreground="{DynamicResource ForegroundBrush}" />
-                            <ComboBox Grid.Row="10" Grid.Column="1" SelectedItem="{Binding EditingMount.LocalDrive}" HorizontalAlignment="Stretch">
-                                <x:String>Z:</x:String>
-                                <x:String>Y:</x:String>
-                                <x:String>X:</x:String>
-                                <x:String>W:</x:String>
-                                <x:String>V:</x:String>
-                                <x:String>U:</x:String>
-                                <x:String>T:</x:String>
-                                <x:String>S:</x:String>
-                                <x:String>R:</x:String>
-                                <x:String>Q:</x:String>
-                                <x:String>P:</x:String>
-                                <x:String>O:</x:String>
-                                <x:String>N:</x:String>
-                                <x:String>M:</x:String>
-                                <x:String>L:</x:String>
-                                <x:String>K:</x:String>
-                                <x:String>J:</x:String>
-                                <x:String>I:</x:String>
-                                <x:String>H:</x:String>
-                                <x:String>G:</x:String>
-                                <x:String>F:</x:String>
-                                <x:String>E:</x:String>
-                                <x:String>D:</x:String>
-                            </ComboBox>
+                            <TextBlock Text="{Binding DialogHint}" Classes="hint" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="iconOnly" VerticalAlignment="Top"
+                                Command="{Binding CancelEditCommand}" ToolTip.Tip="关闭">
+                            <Path Width="12" Height="12" Stretch="Uniform"
+                                  Fill="{DynamicResource ForegroundMutedBrush}"
+                                  Data="{DynamicResource IconClose}" />
+                        </Button>
+                    </Grid>
 
-                            <CheckBox Grid.Row="12" Grid.Column="0" Grid.ColumnSpan="2" Content="网络驱动器模式" 
-                                      IsChecked="{Binding EditingMount.UseNetworkMode}" Margin="5"
-                                      Foreground="{DynamicResource ForegroundBrush}" />
-                            <TextBlock Grid.Row="12" Grid.Column="1" Text="(显示为：名称 (\\rclone))" 
-                                       FontSize="11" Foreground="{DynamicResource ForegroundMutedBrush}"
-                                       Margin="130,8,0,0" IsVisible="{Binding EditingMount.UseNetworkMode}" />
+                    <!-- 只读提示 -->
+                    <Border Grid.Row="1" Classes="banner" Margin="0,14,0,0"
+                            IsVisible="{Binding IsViewMode}">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Path Width="14" Height="14" Stretch="Uniform" VerticalAlignment="Center"
+                                  Fill="{DynamicResource AccentBrush}" Data="{DynamicResource IconLock}" />
+                            <TextBlock Text="只读查看：该挂载正在运行。卸载后才能修改配置。"
+                                       FontSize="12" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource ForegroundSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
 
-                            <CheckBox Grid.Row="14" Grid.Column="0" Grid.ColumnSpan="2" Content="启动时自动挂载" 
-                                      IsChecked="{Binding EditingMount.AutoMountOnStart}" Margin="5"
-                                      Foreground="{DynamicResource ForegroundBrush}" />
-                        </Grid>
+                    <!-- 表单：向右延伸到底，让悬浮细滚动条贴住对话框边缘；内容自己留 20 的右边距 -->
+                    <ScrollViewer Grid.Row="2" Margin="0,16,-20,0">
+                        <StackPanel Spacing="16" Margin="0,0,20,0">
+
+                            <!-- 基本 -->
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="基本" Classes="sectionTitle" />
+                                <Grid ColumnDefinitions="110,*">
+                                    <TextBlock Grid.Column="0" Text="名称" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.Name}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="例如：家庭网盘" />
+                                </Grid>
+                                <Grid ColumnDefinitions="110,*">
+                                    <TextBlock Grid.Column="0" Text="类型" Classes="fieldLabel" />
+                                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                              SelectedItem="{Binding EditingMount.Type}"
+                                              IsEnabled="{Binding CanEdit}">
+                                        <x:String>webdav</x:String>
+                                        <x:String>ftp</x:String>
+                                        <x:String>sftp</x:String>
+                                        <x:String>s3</x:String>
+                                    </ComboBox>
+                                </Grid>
+                            </StackPanel>
+
+                            <Border Classes="divider" />
+
+                            <!-- 服务器 -->
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="服务器" Classes="sectionTitle" />
+
+                                <!-- WebDAV：协议 + 主机 + 端口 -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsWebDavType}">
+                                    <TextBlock Grid.Column="0" Text="主机地址" Classes="fieldLabel" />
+                                    <Grid Grid.Column="1" ColumnDefinitions="96,*,Auto,72">
+                                        <ComboBox Grid.Column="0" HorizontalAlignment="Stretch"
+                                                  SelectedItem="{Binding EditingMount.Protocol}"
+                                                  ItemsSource="{Binding ProtocolOptions}"
+                                                  IsEnabled="{Binding CanEdit}" />
+                                        <TextBox Grid.Column="1" Text="{Binding EditingMount.Host}"
+                                                 IsReadOnly="{Binding IsViewMode}"
+                                                 PlaceholderText="example.com" Margin="6,0,0,0" />
+                                        <TextBlock Grid.Column="2" Text=":" VerticalAlignment="Center" Margin="4,0"
+                                                   Foreground="{DynamicResource ForegroundMutedBrush}" />
+                                        <TextBox Grid.Column="3" Text="{Binding EditingMount.Port}"
+                                                 IsReadOnly="{Binding IsViewMode}"
+                                                 PlaceholderText="443" Margin="4,0,0,0" />
+                                    </Grid>
+                                </Grid>
+
+                                <!-- FTP / SFTP：主机 + 端口 -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsFtpType}">
+                                    <TextBlock Grid.Column="0" Text="主机地址" Classes="fieldLabel" />
+                                    <Grid Grid.Column="1" ColumnDefinitions="*,Auto,72">
+                                        <TextBox Grid.Column="0" Text="{Binding EditingMount.Host}"
+                                                 IsReadOnly="{Binding IsViewMode}"
+                                                 PlaceholderText="ftp.example.com" />
+                                        <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="6,0"
+                                                   Foreground="{DynamicResource ForegroundMutedBrush}" />
+                                        <TextBox Grid.Column="2" Text="{Binding EditingMount.Port}"
+                                                 IsReadOnly="{Binding IsViewMode}"
+                                                 PlaceholderText="21" />
+                                    </Grid>
+                                </Grid>
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsSftpType}">
+                                    <TextBlock Grid.Column="0" Text="主机地址" Classes="fieldLabel" />
+                                    <Grid Grid.Column="1" ColumnDefinitions="*,Auto,72">
+                                        <TextBox Grid.Column="0" Text="{Binding EditingMount.Host}"
+                                                 IsReadOnly="{Binding IsViewMode}"
+                                                 PlaceholderText="sftp.example.com" />
+                                        <TextBlock Grid.Column="1" Text=":" VerticalAlignment="Center" Margin="6,0"
+                                                   Foreground="{DynamicResource ForegroundMutedBrush}" />
+                                        <TextBox Grid.Column="2" Text="{Binding EditingMount.Port}"
+                                                 IsReadOnly="{Binding IsViewMode}"
+                                                 PlaceholderText="22" />
+                                    </Grid>
+                                </Grid>
+
+                                <!-- S3 -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsS3Type}">
+                                    <TextBlock Grid.Column="0" Text="服务商" Classes="fieldLabel" />
+                                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                              SelectedItem="{Binding EditingMount.S3Provider}"
+                                              IsEnabled="{Binding CanEdit}">
+                                        <x:String>AWS</x:String>
+                                        <x:String>Alibaba</x:String>
+                                        <x:String>TencentCOS</x:String>
+                                        <x:String>Google</x:String>
+                                        <x:String>Other</x:String>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- 其他类型：完整 URL -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.UseUrlInput}">
+                                    <TextBlock Grid.Column="0" Text="URL" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.Url}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="https://example.com/path" />
+                                </Grid>
+
+                                <!-- 路径（网络存储） -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsNetworkStorageType}">
+                                    <TextBlock Grid.Column="0" Text="路径" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.Path}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="可选，例如 dav/files" />
+                                </Grid>
+
+                                <!-- 用户名 / 密码（网络存储） -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsNetworkStorageType}">
+                                    <TextBlock Grid.Column="0" Text="用户名" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.User}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="可选" />
+                                </Grid>
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsNetworkStorageType}">
+                                    <TextBlock Grid.Column="0" Text="密码" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.Password}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PasswordChar="*" PlaceholderText="可选" />
+                                </Grid>
+
+                                <!-- WebDAV 服务商 -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsWebDavType}">
+                                    <TextBlock Grid.Column="0" Text="WebDAV 服务商" Classes="fieldLabel" />
+                                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                              SelectedItem="{Binding EditingMount.Vendor}"
+                                              IsEnabled="{Binding CanEdit}">
+                                        <x:String>other</x:String>
+                                        <x:String>owncloud</x:String>
+                                        <x:String>nextcloud</x:String>
+                                        <x:String>sharepoint</x:String>
+                                        <x:String>fastmail</x:String>
+                                    </ComboBox>
+                                </Grid>
+
+                                <!-- S3 凭证 -->
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsS3Type}">
+                                    <TextBlock Grid.Column="0" Text="Access Key" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.AccessKeyId}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="Access Key ID" />
+                                </Grid>
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsS3Type}">
+                                    <TextBlock Grid.Column="0" Text="Secret Key" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.SecretAccessKey}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PasswordChar="*" PlaceholderText="Secret Access Key" />
+                                </Grid>
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsS3Type}">
+                                    <TextBlock Grid.Column="0" Text="区域" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.Region}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="可选，例如 us-east-1" />
+                                </Grid>
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsS3Type}">
+                                    <TextBlock Grid.Column="0" Text="Endpoint" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.Endpoint}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="可选，兼容 S3 的服务地址" />
+                                </Grid>
+                                <Grid ColumnDefinitions="110,*" IsVisible="{Binding EditingMount.IsS3Type}">
+                                    <TextBlock Grid.Column="0" Text="Bucket" Classes="fieldLabel" />
+                                    <TextBox Grid.Column="1" Text="{Binding EditingMount.RemotePath}"
+                                             IsReadOnly="{Binding IsViewMode}"
+                                             PlaceholderText="bucket-name 或 bucket/path" />
+                                </Grid>
+                            </StackPanel>
+
+                            <Border Classes="divider" />
+
+                            <!-- 本地与选项 -->
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="本地与选项" Classes="sectionTitle" />
+                                <Grid ColumnDefinitions="110,*">
+                                    <TextBlock Grid.Column="0" Text="挂载点" Classes="fieldLabel" />
+                                    <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
+                                              ItemsSource="{Binding MountPointOptions}"
+                                              SelectedItem="{Binding EditingMount.LocalDrive}"
+                                              IsEnabled="{Binding CanEdit}" />
+                                </Grid>
+                                <CheckBox Content="网络驱动器模式（显示为「名称 (\\rclone)」）"
+                                          IsChecked="{Binding EditingMount.UseNetworkMode}"
+                                          IsEnabled="{Binding CanEdit}"
+                                          Foreground="{DynamicResource ForegroundSecondaryBrush}" />
+                                <CheckBox Content="启动程序时自动挂载"
+                                          IsChecked="{Binding EditingMount.AutoMountOnStart}"
+                                          IsEnabled="{Binding CanEdit}"
+                                          Foreground="{DynamicResource ForegroundSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
                     </ScrollViewer>
 
-                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,20,0,0">
-                        <Button Grid.Column="0" Content="测试连接" Command="{Binding TestConnectionCommand}"
-                                IsEnabled="{Binding !IsTestingConnection}"
-                                HorizontalAlignment="Left" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Content="保存" Command="{Binding SaveMountCommand}"
-                                    Background="{DynamicResource AccentBrush}"
-                                    Foreground="{DynamicResource AccentForegroundBrush}" />
-                            <Button Content="取消" Command="{Binding CancelEditCommand}" />
+                    <!-- 底部操作 -->
+                    <Grid Grid.Row="3" ColumnDefinitions="*,Auto" Margin="0,18,0,0">
+                        <Button Grid.Column="0" Classes="secondary" Content="测试连接"
+                                HorizontalAlignment="Left"
+                                Command="{Binding TestConnectionCommand}"
+                                IsEnabled="{Binding !IsTestingConnection}" />
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <Button Classes="secondary" Content="卸载并编辑"
+                                    IsVisible="{Binding IsViewMode}"
+                                    Command="{Binding UnmountAndEditCommand}" />
+                            <Button Classes="secondary" Content="取消"
+                                    IsVisible="{Binding CanEdit}"
+                                    Command="{Binding CancelEditCommand}" />
+                            <Button Classes="primary" Content="{Binding SaveButtonText}"
+                                    IsVisible="{Binding CanEdit}"
+                                    Command="{Binding SaveMountCommand}" />
+                            <Button Classes="secondary" Content="关闭"
+                                    IsVisible="{Binding IsViewMode}"
+                                    Command="{Binding CancelEditCommand}" />
                         </StackPanel>
                     </Grid>
                 </Grid>

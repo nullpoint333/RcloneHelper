@@ -4,7 +4,109 @@
              RequestedThemeVariant="Dark">
     <Application.Styles>
         <FluentTheme />
-        <StyleInclude Source="/Themes/Theme.axaml" />
+        <StyleInclude Source="/Styles/Controls.axaml" />
         <StyleInclude Source="/Styles/Icons.axaml" />
     </Application.Styles>
+
+    <!-- 主题资源：随 RequestedThemeVariant（Dark/Light）自动切换，
+         避免在代码里维护两份颜色表。Default 即深色主题。 -->
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <!-- 强调色 -->
+                    <SolidColorBrush x:Key="AccentBrush">#3ECF8E</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentForegroundBrush">#07130D</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentSubtleBrush">#17352A</SolidColorBrush>
+
+                    <!-- 状态色 -->
+                    <SolidColorBrush x:Key="SuccessBrush">#3ECF8E</SolidColorBrush>
+                    <SolidColorBrush x:Key="WarningBrush">#E8A33D</SolidColorBrush>
+                    <SolidColorBrush x:Key="ErrorBrush">#F0616D</SolidColorBrush>
+                    <SolidColorBrush x:Key="InfoBrush">#5AA9F8</SolidColorBrush>
+
+                    <!-- 背景与表面 -->
+                    <SolidColorBrush x:Key="BackgroundBrush">#14161A</SolidColorBrush>
+                    <SolidColorBrush x:Key="ContentBackgroundBrush">#14161A</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceBrush">#1B1E24</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceHighBrush">#21252C</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceLowBrush">#2A2F38</SolidColorBrush>
+                    <SolidColorBrush x:Key="CardBrush">#1B1E24</SolidColorBrush>
+                    <SolidColorBrush x:Key="BorderBrush">#2F3440</SolidColorBrush>
+
+                    <!-- 前景文字 -->
+                    <SolidColorBrush x:Key="ForegroundBrush">#E9EBEF</SolidColorBrush>
+                    <SolidColorBrush x:Key="ForegroundSecondaryBrush">#C2C7D0</SolidColorBrush>
+                    <SolidColorBrush x:Key="ForegroundMutedBrush">#8C93A1</SolidColorBrush>
+                    <SolidColorBrush x:Key="ForegroundDisabledBrush">#5C6370</SolidColorBrush>
+
+                    <!-- 标题栏 / 导航栏 -->
+                    <SolidColorBrush x:Key="TitleBarBackgroundBrush">#171A1F</SolidColorBrush>
+                    <SolidColorBrush x:Key="TitleBarForegroundBrush">#C2C7D0</SolidColorBrush>
+                    <SolidColorBrush x:Key="NavBarBackgroundBrush">#171A1F</SolidColorBrush>
+                    <SolidColorBrush x:Key="NavBarItemHoverBrush">#23272F</SolidColorBrush>
+                    <SolidColorBrush x:Key="NavBarItemSelectedBrush">#1B3A2C</SolidColorBrush>
+
+                    <!-- 列表 -->
+                    <SolidColorBrush x:Key="ListItemHoverBrush">#23272F</SolidColorBrush>
+                    <SolidColorBrush x:Key="ListItemSelectedBrush">#1B3A2C</SolidColorBrush>
+                    <SolidColorBrush x:Key="ListItemSelectedForegroundBrush">#E9EBEF</SolidColorBrush>
+
+                    <!-- 通用按钮 -->
+                    <SolidColorBrush x:Key="ButtonBrush">#2A2F38</SolidColorBrush>
+                    <SolidColorBrush x:Key="ButtonForegroundBrush">#E9EBEF</SolidColorBrush>
+
+                    <!-- 遮罩 -->
+                    <SolidColorBrush x:Key="OverlayBrush">#A6000000</SolidColorBrush>
+                </ResourceDictionary>
+
+                <ResourceDictionary x:Key="Light">
+                    <!-- 强调色 -->
+                    <SolidColorBrush x:Key="AccentBrush">#0E9F6E</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentForegroundBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="AccentSubtleBrush">#E3F7EE</SolidColorBrush>
+
+                    <!-- 状态色 -->
+                    <SolidColorBrush x:Key="SuccessBrush">#0E9F6E</SolidColorBrush>
+                    <SolidColorBrush x:Key="WarningBrush">#B26A00</SolidColorBrush>
+                    <SolidColorBrush x:Key="ErrorBrush">#D93036</SolidColorBrush>
+                    <SolidColorBrush x:Key="InfoBrush">#1B6FD1</SolidColorBrush>
+
+                    <!-- 背景与表面 -->
+                    <SolidColorBrush x:Key="BackgroundBrush">#F6F7F9</SolidColorBrush>
+                    <SolidColorBrush x:Key="ContentBackgroundBrush">#F6F7F9</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceHighBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="SurfaceLowBrush">#EEF1F5</SolidColorBrush>
+                    <SolidColorBrush x:Key="CardBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="BorderBrush">#E2E6EC</SolidColorBrush>
+
+                    <!-- 前景文字 -->
+                    <SolidColorBrush x:Key="ForegroundBrush">#161A20</SolidColorBrush>
+                    <SolidColorBrush x:Key="ForegroundSecondaryBrush">#3B414B</SolidColorBrush>
+                    <SolidColorBrush x:Key="ForegroundMutedBrush">#6B7280</SolidColorBrush>
+                    <SolidColorBrush x:Key="ForegroundDisabledBrush">#A0A6B0</SolidColorBrush>
+
+                    <!-- 标题栏 / 导航栏 -->
+                    <SolidColorBrush x:Key="TitleBarBackgroundBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="TitleBarForegroundBrush">#3B414B</SolidColorBrush>
+                    <SolidColorBrush x:Key="NavBarBackgroundBrush">#FFFFFF</SolidColorBrush>
+                    <SolidColorBrush x:Key="NavBarItemHoverBrush">#F1F4F8</SolidColorBrush>
+                    <SolidColorBrush x:Key="NavBarItemSelectedBrush">#E3F7EE</SolidColorBrush>
+
+                    <!-- 列表 -->
+                    <SolidColorBrush x:Key="ListItemHoverBrush">#F1F4F8</SolidColorBrush>
+                    <SolidColorBrush x:Key="ListItemSelectedBrush">#E3F7EE</SolidColorBrush>
+                    <SolidColorBrush x:Key="ListItemSelectedForegroundBrush">#0B3D2A</SolidColorBrush>
+
+                    <!-- 通用按钮 -->
+                    <SolidColorBrush x:Key="ButtonBrush">#EEF1F5</SolidColorBrush>
+                    <SolidColorBrush x:Key="ButtonForegroundBrush">#161A20</SolidColorBrush>
+
+                    <!-- 遮罩 -->
+                    <SolidColorBrush x:Key="OverlayBrush">#4D000000</SolidColorBrush>
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>
